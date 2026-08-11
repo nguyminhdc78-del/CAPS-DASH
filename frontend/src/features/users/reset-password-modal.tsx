@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useErrorMessage } from '@/core/i18n/use-error-message'
+import { copyText } from '@/shared/utils/copy-text'
 import { useResetPasswordMutation } from './use-users-queries'
 import type { UserAccount } from './use-users-queries'
 
@@ -70,8 +71,13 @@ export function ResetPasswordModal({
   }
 
   const handleCopy = async (): Promise<void> => {
-    await navigator.clipboard.writeText(password)
-    void message.success(t('common:copied'))
+    if (await copyText(password)) {
+      void message.success(t('common:copied'))
+      return
+    }
+    // Never claim a copy that did not happen: this password is shown once,
+    // and an operator who trusts a false "copied" loses it entirely.
+    void message.warning(t('common:copyFailed'))
   }
 
   const handleClose = (): void => {

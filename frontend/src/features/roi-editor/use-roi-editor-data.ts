@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { FrameSize } from './coordinate-transform'
 import { rescaleToFrame } from './coordinate-transform'
+import { generateSlotKey } from './roi-editor-reducer-helpers'
 import { useCameraSnapshot } from './use-camera-snapshot'
 import { useSlotMapQuery } from './use-roi-editor-queries'
 import type { RoiEditorApi } from './use-roi-editor-state'
@@ -44,7 +45,9 @@ export function useRoiEditorData(cameraId: number, editor: RoiEditorApi) {
       (storedFrame.width !== snapshotFrame.width || storedFrame.height !== snapshotFrame.height)
 
     const slots: EditorSlot[] = stored.slots.map((entry, index) => ({
-      key: `${entry.code}-${index}-${crypto.randomUUID()}`,
+      // Not `crypto.randomUUID()` - it does not exist outside a secure
+      // context, and the dashboard is served over plain HTTP from the board.
+      key: `${entry.code}-${index}-${generateSlotKey()}`,
       code: entry.code,
       floor: entry.floor,
       points: entry.polygon.points.map(([x, y]) => {

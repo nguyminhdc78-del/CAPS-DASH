@@ -32,5 +32,6 @@
   "clockSuspect": "Đồng hồ không đáng tin",
   "clockSuspectTooltip": "Được ghi khi đồng hồ hệ thống chưa đồng bộ - mốc thời gian này có thể sai",
   "clockSuspectBannerTitle": "Một số bản ghi có mốc thời gian không đáng tin",
-  "clockSuspectBannerBody": "{{count}} bản ghi được tạo khi đồng hồ hệ thống chưa đồng bộ và bị loại khỏi tổng số bên dưới"
+  "clockSuspectBannerBody": "{{count}} bản ghi được tạo khi đồng hồ hệ thống chưa đồng bộ và bị loại khỏi tổng số bên dưới",
+  "copyFailed": "Không sao chép được. Hãy bôi đen và tự sao chép."
 }

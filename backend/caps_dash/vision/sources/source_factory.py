@@ -14,6 +14,7 @@ from ...db.enums import CameraSourceType
 from ...errors.exceptions import ValidationFailedError
 from .base import FrameSource
 from .esp32cam_http_source import Esp32CamHttpSource
+from .esp32cam_stream_source import Esp32CamStreamSource
 from .fake_source import FakeSource
 from .image_folder_source import ImageFolderSource
 from .video_file_source import VideoFileSource
@@ -35,6 +36,10 @@ def build_source(camera: Camera, settings: Settings) -> FrameSource:
             return Esp32CamHttpSource(
                 camera.id, _require_url(camera), settings.camera_timeout_s
             )
+        case CameraSourceType.ESP32CAM_STREAM:
+            return Esp32CamStreamSource(
+                camera.id, _require_url(camera), settings.camera_timeout_s
+            )
         case CameraSourceType.IMAGE_FOLDER:
             return ImageFolderSource(camera.id, Path(_require_url(camera)))
         case CameraSourceType.VIDEO_FILE:
@@ -42,8 +47,8 @@ def build_source(camera: Camera, settings: Settings) -> FrameSource:
         case CameraSourceType.FAKE:
             return FakeSource(camera.id)
         case _:
-            # Unreachable while CameraSourceType keeps exactly these four
-            # members; kept as a defensive backstop rather than trusted to
+            # Unreachable while every CameraSourceType member is handled
+            # above; kept as a defensive backstop rather than trusted to
             # the enum never growing without this factory being updated too.
             raise ValidationFailedError(f"Unhandled camera source_type: {source_type!r}")
 

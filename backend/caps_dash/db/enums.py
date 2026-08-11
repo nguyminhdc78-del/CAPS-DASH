@@ -36,7 +36,14 @@ class CameraSourceType(StrEnum):
     hardware on hand, so development, the demo and CI all depend on them.
     """
 
+    # Polls one still per tick. Simple, and the right shape when frames are
+    # wanted every few seconds.
     ESP32CAM_HTTP = "esp32cam_http"
+    # Holds an MJPEG connection open and reads the newest frame from memory.
+    # Measured on the real hardware: a still costs ~74 ms inside `read()`
+    # (handshake + capture + transfer, strictly sequential), while a stream
+    # overlaps capture with transfer and makes `read()` a memory lookup.
+    ESP32CAM_STREAM = "esp32cam_stream"
     IMAGE_FOLDER = "image_folder"
     VIDEO_FILE = "video_file"
     FAKE = "fake"

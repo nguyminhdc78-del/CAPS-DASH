@@ -388,6 +388,7 @@
         "description": "Where a camera's frames come from.\n\nThe non-hardware sources are not test scaffolding - there is no camera\nhardware on hand, so development, the demo and CI all depend on them.",
         "enum": [
           "esp32cam_http",
+          "esp32cam_stream",
           "image_folder",
           "video_file",
           "fake"

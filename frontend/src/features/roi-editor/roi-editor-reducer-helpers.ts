@@ -47,6 +47,22 @@ export function generateDefaultCode(existingCodes: string[]): string {
   return `NEW-${n}`
 }
 
+let keyCounter = 0
+
+/**
+ * A React key for a slot being edited. Never persisted, never sent anywhere.
+ *
+ * NOT `crypto.randomUUID()`: that function only exists in a **secure
+ * context**, so it is there on `localhost` during development and gone the
+ * moment the dashboard is served from the board's LAN address over plain
+ * HTTP - which is exactly how this product is deployed. It crashed the whole
+ * ROI editor with "crypto.randomUUID is not a function" while every
+ * development machine looked fine.
+ *
+ * A counter plus a timestamp is enough: these keys only have to be unique
+ * within one editing session in one tab.
+ */
 export function generateSlotKey(): string {
-  return crypto.randomUUID()
+  keyCounter += 1
+  return `slot-${Date.now().toString(36)}-${keyCounter}`
 }
