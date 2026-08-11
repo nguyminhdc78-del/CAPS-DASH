@@ -1,0 +1,16 @@
+{
+  "title": "Parking slots",
+  "code": "Slot",
+  "state": "State",
+  "stateFree": "Free",
+  "stateOccupied": "Occupied",
+  "stateUnknown": "Unknown",
+  "unknownNotFree": "Unknown is not free: the system has not yet seen enough frames to decide.",
+  "total": "Total slots",
+  "free": "Free",
+  "occupied": "Occupied",
+  "unknown": "Unknown",
+  "since": "Since",
+  "duration": "Duration",
+  "occupancy": "Occupancy"
+}

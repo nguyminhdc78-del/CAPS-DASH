@@ -1,0 +1,42 @@
+{
+  "name": "caps-dash-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "oxlint src tests",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "gen:api": "openapi-typescript http://127.0.0.1:8000/openapi.json -o src/core/types/api-schema.d.ts"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.3.2",
+    "@tanstack/react-query": "^5.101.4",
+    "antd": "^6.6.0",
+    "dayjs": "^1.11.21",
+    "i18next": "^26.3.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-i18next": "^17.0.11",
+    "react-router": "^8.3.0",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.5",
+    "jsdom": "^30.0.1",
+    "openapi-typescript": "^7.13.0",
+    "oxlint": "^1.78.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Camera",
+  "code": "Mã",
+  "name": "Tên",
+  "floor": "Tầng",
+  "sourceType": "Loại nguồn",
+  "sourceUrl": "Địa chỉ nguồn",
+  "online": "Đang hoạt động",
+  "offline": "Mất kết nối",
+  "enabled": "Đang bật",
+  "disabled": "Đã tắt",
+  "testConnection": "Kiểm tra kết nối",
+  "pollInterval": "Chu kỳ quét (giây)",
+  "voteWindow": "Số khung bỏ phiếu",
+  "voteThreshold": "Ngưỡng phiếu",
+  "confidence": "Ngưỡng tin cậy",
+  "processMs": "Thời gian xử lý (ms)",
+  "errors": "Số lỗi",
+  "liveView": "Xem trực tiếp",
+  "addCamera": "Thêm camera",
+  "slotMap": "Sơ đồ ô đỗ"
+}

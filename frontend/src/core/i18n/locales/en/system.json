@@ -1,0 +1,16 @@
+{
+  "title": "System",
+  "disk": "Disk",
+  "records": "Records",
+  "schemaVersion": "Schema version",
+  "backup": "Back up",
+  "backupNow": "Back up now",
+  "purge": "Purge expired data",
+  "retentionMonths": "Retention (months)",
+  "auditLog": "Audit log",
+  "clockSuspectWarning": "The system clock is not synchronised. Records written now are flagged as untrustworthy and excluded from reports.",
+  "users": "Users",
+  "dashboard": "Dashboard",
+  "history": "History",
+  "statistics": "Statistics"
+}

@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+
+    "strict": true,
+    /* Indexing an array or record can return undefined. Without this the
+       compiler cheerfully lets you read past the end of a slot list. */
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": true,
+
+    /* Type-only imports must say so, which keeps the emitted bundle honest. */
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] },
+    /* "node" is needed by vite.config.ts and the locale-parity test, which
+       read from disk at build/test time rather than in the browser. */
+    "types": ["node", "vite/client", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"]
+}

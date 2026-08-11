@@ -1,0 +1,21 @@
+{
+  "INTERNAL_ERROR": "Lỗi hệ thống. Vui lòng thử lại.",
+  "VALIDATION_FAILED": "Dữ liệu nhập không hợp lệ.",
+  "NOT_FOUND": "Không tìm thấy dữ liệu.",
+  "CONFLICT": "Dữ liệu đã tồn tại.",
+  "AUTH_REQUIRED": "Vui lòng đăng nhập.",
+  "AUTH_INVALID_CREDENTIALS": "Tên đăng nhập hoặc mật khẩu không đúng.",
+  "AUTH_TOKEN_EXPIRED": "Phiên đã hết hạn, vui lòng đăng nhập lại.",
+  "AUTH_TOKEN_INVALID": "Phiên không hợp lệ.",
+  "AUTH_SESSION_REVOKED": "Phiên đã bị thu hồi.",
+  "AUTH_SESSION_REUSED": "Phát hiện phiên bị dùng lại. Toàn bộ phiên đã bị thu hồi để bảo vệ tài khoản.",
+  "FORBIDDEN": "Tài khoản không đủ quyền.",
+  "RATE_LIMITED": "Thử quá nhiều lần. Vui lòng chờ rồi thử lại.",
+  "CAMERA_UNREACHABLE": "Không kết nối được camera.",
+  "CAMERA_BUSY": "Camera đang bận.",
+  "CAMERA_DISABLED": "Camera đang tắt.",
+  "SLOT_MAP_INVALID": "Sơ đồ ô đỗ không hợp lệ.",
+  "MODEL_UNAVAILABLE": "Chưa nạp được mô hình nhận diện.",
+  "VIEWER_LIMIT_REACHED": "Đã đạt giới hạn số người xem camera này.",
+  "BACKUP_FAILED": "Sao lưu thất bại."
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Cameras",
+  "code": "Code",
+  "name": "Name",
+  "floor": "Floor",
+  "sourceType": "Source type",
+  "sourceUrl": "Source address",
+  "online": "Online",
+  "offline": "Offline",
+  "enabled": "Enabled",
+  "disabled": "Disabled",
+  "testConnection": "Test connection",
+  "pollInterval": "Poll interval (s)",
+  "voteWindow": "Vote window",
+  "voteThreshold": "Vote threshold",
+  "confidence": "Confidence threshold",
+  "processMs": "Process time (ms)",
+  "errors": "Errors",
+  "liveView": "Live view",
+  "addCamera": "Add camera",
+  "slotMap": "Slot map"
+}

@@ -1,0 +1,16 @@
+{
+  "title": "Hệ thống",
+  "disk": "Dung lượng đĩa",
+  "records": "Số bản ghi",
+  "schemaVersion": "Phiên bản lược đồ",
+  "backup": "Sao lưu",
+  "backupNow": "Sao lưu ngay",
+  "purge": "Xoá dữ liệu quá hạn",
+  "retentionMonths": "Thời gian lưu (tháng)",
+  "auditLog": "Nhật ký thao tác",
+  "clockSuspectWarning": "Đồng hồ hệ thống chưa đồng bộ. Các bản ghi tạo lúc này bị đánh dấu là không đáng tin và sẽ bị loại khỏi báo cáo.",
+  "users": "Người dùng",
+  "dashboard": "Tổng quan",
+  "history": "Lịch sử",
+  "statistics": "Thống kê"
+}

@@ -1,0 +1,21 @@
+{
+  "INTERNAL_ERROR": "Server error. Please try again.",
+  "VALIDATION_FAILED": "The submitted data is not valid.",
+  "NOT_FOUND": "Not found.",
+  "CONFLICT": "That already exists.",
+  "AUTH_REQUIRED": "Please sign in.",
+  "AUTH_INVALID_CREDENTIALS": "Incorrect username or password.",
+  "AUTH_TOKEN_EXPIRED": "Session expired, please sign in again.",
+  "AUTH_TOKEN_INVALID": "Invalid session.",
+  "AUTH_SESSION_REVOKED": "This session was revoked.",
+  "AUTH_SESSION_REUSED": "Session replay detected. All sessions were revoked to protect the account.",
+  "FORBIDDEN": "Your account is not permitted to do that.",
+  "RATE_LIMITED": "Too many attempts. Please wait and try again.",
+  "CAMERA_UNREACHABLE": "Cannot reach the camera.",
+  "CAMERA_BUSY": "The camera is busy.",
+  "CAMERA_DISABLED": "The camera is disabled.",
+  "SLOT_MAP_INVALID": "The slot map is not valid.",
+  "MODEL_UNAVAILABLE": "The detection model is unavailable.",
+  "VIEWER_LIMIT_REACHED": "This camera has reached its viewer limit.",
+  "BACKUP_FAILED": "Backup failed."
+}

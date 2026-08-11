@@ -1,0 +1,15 @@
+{
+  "title": "Alerts",
+  "open": "Open",
+  "acknowledged": "Acknowledged",
+  "acknowledge": "Acknowledge",
+  "severity": "Severity",
+  "severityInfo": "Info",
+  "severityWarning": "Warning",
+  "severityCritical": "Critical",
+  "cameraOffline": "Camera offline",
+  "overstay": "Vehicle overstay",
+  "diskLow": "Disk space low",
+  "slotOverlap": "One slot matched several vehicles - the polygon may overlap the row behind",
+  "clockUnsynced": "Clock not synchronised"
+}

@@ -1,0 +1,16 @@
+{
+  "title": "Ô đỗ",
+  "code": "Mã ô",
+  "state": "Trạng thái",
+  "stateFree": "Trống",
+  "stateOccupied": "Có xe",
+  "stateUnknown": "Chưa rõ",
+  "unknownNotFree": "Chưa rõ không tính là trống — hệ thống chưa đủ khung hình để kết luận.",
+  "total": "Tổng số ô",
+  "free": "Còn trống",
+  "occupied": "Có xe",
+  "unknown": "Chưa rõ",
+  "since": "Từ lúc",
+  "duration": "Thời lượng",
+  "occupancy": "Tỉ lệ lấp đầy"
+}

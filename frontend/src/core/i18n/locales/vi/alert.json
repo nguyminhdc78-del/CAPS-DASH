@@ -1,0 +1,15 @@
+{
+  "title": "Cảnh báo",
+  "open": "Chưa xử lý",
+  "acknowledged": "Đã xử lý",
+  "acknowledge": "Đánh dấu đã xử lý",
+  "severity": "Mức độ",
+  "severityInfo": "Thông tin",
+  "severityWarning": "Cảnh báo",
+  "severityCritical": "Nghiêm trọng",
+  "cameraOffline": "Camera mất kết nối",
+  "overstay": "Xe đỗ quá lâu",
+  "diskLow": "Dung lượng đĩa thấp",
+  "slotOverlap": "Một ô nhận nhiều xe — sơ đồ có thể vẽ lấn sang hàng sau",
+  "clockUnsynced": "Đồng hồ chưa đồng bộ"
+}

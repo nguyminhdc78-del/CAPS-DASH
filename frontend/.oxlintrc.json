@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "unicorn", "import"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "env": { "browser": true, "es2024": true },
+  "rules": {
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "eqeqeq": "error",
+    /* The automatic JSX runtime has made this obsolete: React does not need
+       to be in scope, and importing it only to satisfy a linter adds a dead
+       import to every component. */
+    "react/react-in-jsx-scope": "off",
+    /* Side-effect imports are the documented way to register a dayjs locale
+       and to initialise i18next. There is nothing to assign. */
+    "import/no-unassigned-import": "off",
+    /* i18next's default export legitimately carries a `use` method. */
+    "import/no-named-as-default-member": "off",
+    /* toSorted() is fine, but sorting a freshly-built local array in place is
+       not a bug and the rule cannot tell the difference. */
+    "unicorn/no-array-sort": "off"
+  },
+  "overrides": [
+    {
+      "files": ["tests/**"],
+      "rules": { "no-console": "off" }
+    }
+  ],
+  "ignorePatterns": ["dist", "node_modules", "src/core/types/api-schema.d.ts"]
+}
