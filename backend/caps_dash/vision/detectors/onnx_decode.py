@@ -27,7 +27,11 @@ def decode_yolo_output(
 ) -> list[Detection]:
     """Raw session output -> filtered, NMS'd, original-pixel `Detection` list."""
     predictions = _to_rows(raw_output)  # (N, 4 + num_classes): cxcywh + per-class scores
-    if predictions.shape[0] == 0:
+    # Both axes must be checked. A head with zero anchors keeps its channel
+    # count, so a row-count test alone passes it through to argmax, which
+    # raises on an empty sequence. Some exports (NMS baked into the graph)
+    # legitimately return nothing at all on a quiet frame.
+    if predictions.shape[0] == 0 or predictions.shape[1] <= 4:
         return []
 
     class_scores = predictions[:, 4:]
