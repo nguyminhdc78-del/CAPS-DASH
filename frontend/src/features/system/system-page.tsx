@@ -1,20 +1,36 @@
-import { Card, Empty } from 'antd'
+import { Col, Row, Skeleton } from 'antd'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-/**
- * Placeholder. The real page is built in phase 13.
- *
- * It exists now so the route table, the sidebar and the role guards are
- * complete and testable from phase 09 onward - a menu entry pointing at a
- * missing module fails at runtime, not at build time.
- */
+import { BackupPanel } from './backup-panel'
+import { ClockSuspectBanner } from './clock-suspect-banner'
+import { PurgePanel } from './purge-panel'
+import { SystemInfoCards } from './system-info-cards'
+import { useSystemInfoQuery } from './use-system-queries'
+
+/** Admin-only operational console: status snapshot, backup, purge.
+ * `route-definitions.tsx` already gates this route at `minRole: 'admin'`. */
 export default function SystemPage(): ReactNode {
-  const { t } = useTranslation(['system', 'common'])
+  const { t } = useTranslation('system')
+  const { data, isLoading } = useSystemInfoQuery()
 
   return (
-    <Card title={t('system:title')}>
-      <Empty description={t('common:noData')} />
-    </Card>
+    <Row gutter={[16, 16]}>
+      <Col span={24}>
+        <h2>{t('title')}</h2>
+      </Col>
+      {data && (
+        <Col span={24}>
+          <ClockSuspectBanner active={data.clock_suspect} />
+        </Col>
+      )}
+      <Col span={24}>{isLoading || !data ? <Skeleton active /> : <SystemInfoCards info={data} />}</Col>
+      <Col xs={24} md={12}>
+        <BackupPanel />
+      </Col>
+      <Col xs={24} md={12}>
+        <PurgePanel />
+      </Col>
+    </Row>
   )
 }
