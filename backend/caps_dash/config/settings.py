@@ -80,6 +80,19 @@ class Settings(BaseSettings):
     default_vote_threshold: int = 4
     camera_timeout_s: float = 5.0
     camera_fail_streak_offline: int = 3
+    # Parked cars do not move, so most frames are the same picture and
+    # running the detector on them re-derives an unchanged answer for ~616 ms
+    # of a shared four-core board. A frame is only inferred when it differs
+    # from the last inferred one by this much (mean absolute difference of a
+    # 64x48 greyscale sample, 0-255 scale). Measured noise floor on the
+    # reference camera was ~0.5 with a worst case of 1.2; 3.0 leaves margin.
+    # A brighter scene is noisier and may want more.
+    motion_change_threshold: float = 3.0
+    # ...and inferred anyway this often regardless, so slow drift - dusk, a
+    # light switched on, auto-exposure creeping - cannot keep the detector
+    # asleep indefinitely. This bounds how long the system can be wrong.
+    motion_force_interval_s: float = 10.0
+
     # A live snapshot is a real request to the camera, and the ROI editor is
     # opened repeatedly while drawing. Reuse the worker's still for this long
     # before going back to the device.

@@ -19,6 +19,7 @@ from ..errors.exceptions import NotFoundError
 from ..realtime.broadcast_hub import BroadcastHub
 from ..realtime.frame_header import build_frame_header
 from ..vision.domain import Slot, SlotMap, SlotMapFilter, build_filter
+from ..vision.frame_change_gate import FrameChangeGate
 from ..vision.sources.base import FrameSource
 from ..vision.sources.source_factory import build_source
 from .camera_metrics import CameraMetrics
@@ -64,6 +65,9 @@ class CameraContext:
     slot_map: SlotMap
     vote_filter: SlotMapFilter
     state_tracker: StateTracker = field(default_factory=StateTracker)
+    change_gate: FrameChangeGate = field(
+        default_factory=lambda: FrameChangeGate(threshold=3.0, force_interval_s=10.0)
+    )
     metrics: CameraMetrics = field(default_factory=CameraMetrics)
 
     # The most recent frame, kept so the ROI editor's snapshot endpoint can be
@@ -74,6 +78,13 @@ class CameraContext:
     last_frame_size: tuple[int, int] = (0, 0)
     last_frame_at: dt.datetime | None = None
 
+    # The last real inference, kept so a frame the change gate skipped can
+    # still be published with results that describe it. The scene did not
+    # change - that is why it was skipped - so these are current, not stale.
+    last_outcome: InferenceOutcome | None = None
+    last_states: dict[str, Any] = field(default_factory=dict)
+    last_fitted: SlotMap | None = None
+
     @property
     def camera_id(self) -> int:
         return self.config.id
@@ -82,6 +93,14 @@ class CameraContext:
         self.last_jpeg = jpeg
         self.last_frame_size = (width, height)
         self.last_frame_at = utc_now()
+
+    def remember_result(
+        self, outcome: InferenceOutcome, states: dict[str, Any], fitted: SlotMap
+    ) -> None:
+        """Keep the last real detection, for frames the change gate skips."""
+        self.last_outcome = outcome
+        self.last_states = dict(states)
+        self.last_fitted = fitted
 
     def close(self) -> None:
         self.source.close()
@@ -183,6 +202,13 @@ def build_context(
         slot_map=slot_map,
         vote_filter=build_filter(
             slot_map.slot_ids, config.vote_window, config.vote_threshold
+        ),
+        # Fresh per context: a rebuilt camera has a new slot map, so the
+        # reference frame from the old one describes a layout that no longer
+        # applies and must not gate the first frame under the new one.
+        change_gate=FrameChangeGate(
+            threshold=settings.motion_change_threshold,
+            force_interval_s=settings.motion_force_interval_s,
         ),
     )
 

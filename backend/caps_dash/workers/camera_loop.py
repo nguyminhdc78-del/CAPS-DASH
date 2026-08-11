@@ -69,6 +69,23 @@ async def run_camera_loop(
             await _sleep_remaining(tick_started, context.config.poll_interval_s, stop)
             continue
 
+        decision = context.change_gate.evaluate(frame.image)
+
+        if not decision.infer:
+            # The picture has not changed since the detector last looked, so
+            # the previous result still describes it. Publishing that result
+            # with this frame is honest - they are the same scene - and the
+            # vote filter is deliberately NOT updated: a repeated frame is not
+            # new evidence, and feeding it in would let one stale observation
+            # vote itself into a majority.
+            seq += 1
+            _publish_unchanged(context, frame.jpeg_bytes, seq)
+            context.metrics.record_success(
+                process_ms=0.0, tick_ms=(time.perf_counter() - tick_started) * 1000.0
+            )
+            await _sleep_remaining(tick_started, context.config.poll_interval_s, stop)
+            continue
+
         try:
             outcome = await context.loop.run_in_executor(
                 context.inference_pool,
@@ -85,8 +102,12 @@ async def run_camera_loop(
             await _sleep_remaining(tick_started, context.config.poll_interval_s, stop)
             continue
 
+        context.change_gate.mark_inferred(frame.image)
+        log.debug("inference_ran", reason=decision.reason, difference=round(decision.difference, 2))
+
         fitted = context.slot_map.fit_to_frame(outcome.frame_w, outcome.frame_h)
         states = context.vote_filter.update(occupied_slot_ids(outcome.detections, fitted))
+        context.remember_result(outcome, states, fitted)
 
         changes = context.state_tracker.diff(states)
         if changes:
@@ -140,6 +161,25 @@ async def run_camera_loop(
 # Status is not history. Writing it every tick would defeat the point of only
 # persisting changes, so it lands roughly once a minute at a 3s poll.
 _HEALTH_EVERY_TICKS = 20
+
+
+def _publish_unchanged(context: CameraContext, jpeg: bytes, seq: int) -> None:
+    """Send a skipped frame to viewers, described by the last real inference.
+
+    The live view must stay smooth even when the detector is idle - that is
+    the whole point of skipping - so the frame still goes out, carrying the
+    boxes and states from the last frame the detector saw. Nothing is
+    fabricated: the scene is unchanged, so those results still describe it.
+    """
+    context.remember_frame(jpeg, *context.last_frame_size)
+
+    outcome, fitted = context.last_outcome, context.last_fitted
+    if outcome is None or fitted is None or not context.hub.has_viewers(context.camera_id):
+        return
+
+    header = context.build_header(outcome, context.last_states, seq, fitted)
+    header["inference_skipped"] = True
+    context.hub.publish(context.camera_id, encode_frame_message(header, jpeg))
 
 
 async def _handle_failed_read(

@@ -45,6 +45,12 @@ def settings(tmp_path: Path) -> Settings:
         detector_backend="fake",
         # Fast ticks: the loop is bounded by max_ticks, not by wall clock.
         default_poll_interval_s=0.01,
+        # Gate off for these tests. The fake source produces near-identical
+        # frames, so the change gate would correctly skip inference after the
+        # first tick and the vote filter would never see enough observations -
+        # which is the gate's own behaviour, tested separately below, not the
+        # voting behaviour these tests are about.
+        motion_change_threshold=0.0,
         log_json=False,
     )
 
@@ -296,3 +302,91 @@ async def test_a_camera_added_after_startup_starts_running(settings, session_fac
         await supervisor.stop(timeout=2.0)
         inference_pool.shutdown(wait=True)
         db_pool.shutdown(wait=True)
+
+
+async def test_a_barely_changing_scene_skips_most_inferences(
+    settings, session_factory, camera_id
+) -> None:
+    """Parked cars do not move, so most frames are the same picture.
+
+    Running the detector on each of them re-derives an unchanged answer for
+    ~616 ms of a shared four-core board; the gate compares a 64x48 greyscale
+    sample for 2.7 ms instead.
+
+    The arithmetic here is exact and worth following, because it demonstrates
+    the rule that matters: `FakeSource` brightens by one grey level per frame,
+    and the gate measures against the last frame the detector *saw*, not the
+    previous frame. So the difference accumulates 1, 2, 3 and trips the
+    threshold of 3.0 on every third tick. Measured frame-to-frame it would be
+    a constant 1.0 and the detector would never run again - which is exactly
+    how a car easing into a slot over several frames would be missed.
+    """
+    gated = settings.model_copy(
+        update={"motion_change_threshold": 3.0, "motion_force_interval_s": 3600.0}
+    )
+    calls = 0
+    real_inference = camera_loop.run_inference
+
+    def counting_inference(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return real_inference(*args, **kwargs)
+
+    camera_loop.run_inference = counting_inference
+    try:
+        await _run(gated, session_factory, camera_id, BroadcastHub(), ticks=8)
+    finally:
+        camera_loop.run_inference = real_inference
+
+    # Tick 1 (no reference yet), then ticks 4 and 7 as the drift reaches 3.
+    assert calls == 3
+
+
+async def test_the_heartbeat_forces_inference_on_a_static_scene(
+    settings, session_factory, camera_id
+) -> None:
+    """Slow drift - dusk, a light switched on, auto-exposure creeping - can
+    stay under the threshold indefinitely. The heartbeat bounds how long the
+    system is allowed to be wrong about a slot."""
+    gated = settings.model_copy(
+        update={"motion_change_threshold": 3.0, "motion_force_interval_s": 0.0}
+    )
+    calls = 0
+    real_inference = camera_loop.run_inference
+
+    def counting_inference(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return real_inference(*args, **kwargs)
+
+    camera_loop.run_inference = counting_inference
+    try:
+        await _run(gated, session_factory, camera_id, BroadcastHub(), ticks=5)
+    finally:
+        camera_loop.run_inference = real_inference
+
+    # A zero interval means every tick is overdue, so nothing is ever skipped.
+    assert calls == 5
+
+
+async def test_a_skipped_frame_still_reaches_viewers(
+    settings, session_factory, camera_id
+) -> None:
+    """The live view must stay smooth while the detector is idle.
+
+    That is the point of skipping: the picture is unchanged, so the previous
+    detections still describe it and the frame goes out carrying them.
+    """
+    gated = settings.model_copy(
+        update={"motion_change_threshold": 3.0, "motion_force_interval_s": 3600.0}
+    )
+    hub = BroadcastHub()
+    viewer = hub.subscribe(camera_id)
+
+    await _run(gated, session_factory, camera_id, hub, ticks=6)
+
+    message = decode_frame_message(await viewer.get())
+    assert message.jpeg.startswith(b"\xff\xd8")
+    # Marked so a client can tell a reused result from a fresh one.
+    assert message.header["inference_skipped"] is True
+    assert message.header["slots"][0]["code"] == "A1"
