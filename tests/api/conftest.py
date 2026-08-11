@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from caps_dash.app_factory import create_app
 from caps_dash.config.settings import Settings
+from caps_dash.db.engine_factory import create_db_engine
 from caps_dash.db.enums import UserRole
 from caps_dash.db.models import Base, User
 from caps_dash.security.password_hasher import hash_password
@@ -35,14 +36,18 @@ def settings(tmp_path) -> Settings:
 
 @pytest.fixture
 def app(settings: Settings) -> FastAPI:
+    # The schema must exist BEFORE the app starts: the camera supervisor reads
+    # the cameras table during lifespan, exactly as it does in production
+    # after `caps-dash migrate` has run.
+    engine = create_db_engine(settings.database_url)
+    Base.metadata.create_all(engine)
+    engine.dispose()
     return create_app(settings)
 
 
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
     with TestClient(app) as test_client:
-        # Lifespan has run, so the engine exists; build the schema on it.
-        Base.metadata.create_all(app.state.caps.engine)
         yield test_client
 
 

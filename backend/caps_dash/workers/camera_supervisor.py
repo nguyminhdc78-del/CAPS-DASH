@@ -1,0 +1,194 @@
+"""Starting, restarting and stopping the camera loops."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from concurrent.futures import ThreadPoolExecutor
+
+from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session, sessionmaker
+
+from ..config.settings import Settings
+from ..db.models import Camera
+from ..db.session import session_scope
+from ..observability.logging_setup import get_logger
+from ..realtime.broadcast_hub import BroadcastHub
+from .camera_context import CameraContext, build_context
+from .camera_loop import run_camera_loop
+from .reload_signals import ReloadSignals
+
+logger = get_logger(__name__)
+
+# Restart backoff after a loop dies unexpectedly. Capped so a camera that is
+# broken for hours is retried steadily rather than hammered or abandoned.
+INITIAL_BACKOFF_S = 1.0
+MAX_BACKOFF_S = 60.0
+
+
+class CameraSupervisor:
+    """Owns one asyncio task per enabled camera."""
+
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+        loop: asyncio.AbstractEventLoop,
+        inference_pool: ThreadPoolExecutor,
+        db_pool: ThreadPoolExecutor,
+        hub: BroadcastHub,
+        reload_signals: ReloadSignals,
+    ) -> None:
+        self._settings = settings
+        self._session_factory = session_factory
+        self._loop = loop
+        self._inference_pool = inference_pool
+        self._db_pool = db_pool
+        self._hub = hub
+        self._reload_signals = reload_signals
+
+        self._tasks: dict[int, asyncio.Task[None]] = {}
+        self._contexts: dict[int, CameraContext] = {}
+        self._stop = asyncio.Event()
+
+    # --- lifecycle -----------------------------------------------------------
+
+    async def start(self) -> None:
+        self._stop.clear()
+        await self.reconcile()
+        logger.info("camera_supervisor_started", cameras=len(self._tasks))
+
+    async def reconcile(self) -> None:
+        """Match running tasks to the enabled cameras in the database."""
+        wanted = set(self._enabled_camera_ids())
+        running = set(self._tasks)
+
+        for camera_id in wanted - running:
+            self._spawn(camera_id)
+        for camera_id in running - wanted:
+            await self._cancel(camera_id)
+
+    async def stop(self, timeout: float = 10.0) -> None:
+        self._stop.set()
+        tasks = list(self._tasks.values())
+        if tasks:
+            # Give the loops a chance to finish the tick they are on; cancel
+            # only the ones that overstay.
+            _, pending = await asyncio.wait(tasks, timeout=timeout)
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+
+        for context in self._contexts.values():
+            context.close()
+
+        self._tasks.clear()
+        self._contexts.clear()
+        logger.info("camera_supervisor_stopped")
+
+    # --- introspection, for the readiness probe and the operations page ------
+
+    @property
+    def running_camera_ids(self) -> list[int]:
+        return sorted(self._tasks)
+
+    def context_for(self, camera_id: int) -> CameraContext | None:
+        return self._contexts.get(camera_id)
+
+    # --- internals -----------------------------------------------------------
+
+    def _enabled_camera_ids(self) -> list[int]:
+        try:
+            with session_scope(self._session_factory) as session:
+                return list(
+                    session.execute(
+                        select(Camera.id).where(Camera.is_enabled.is_(True)).order_by(Camera.id)
+                    ).scalars()
+                )
+        except OperationalError:
+            # Almost always a fresh install where migrations have not been run.
+            # Serving with no cameras beats refusing to start: the operator can
+            # then reach /api/health/ready and read this instruction, whereas a
+            # crash loop on a board in a basement tells them nothing.
+            logger.error(
+                "camera_table_unavailable",
+                detail="cannot read the cameras table; run `caps-dash migrate`",
+            )
+            return []
+
+    def _spawn(self, camera_id: int) -> None:
+        task = self._loop.create_task(
+            self._supervise(camera_id), name=f"camera-{camera_id}"
+        )
+        self._tasks[camera_id] = task
+
+    async def _cancel(self, camera_id: int) -> None:
+        task = self._tasks.pop(camera_id, None)
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        context = self._contexts.pop(camera_id, None)
+        if context is not None:
+            context.close()
+        self._reload_signals.forget(camera_id)
+        logger.info("camera_stopped", camera_id=camera_id)
+
+    async def _supervise(self, camera_id: int) -> None:
+        """Keep one camera's loop alive, backing off between crashes."""
+        backoff = INITIAL_BACKOFF_S
+
+        while not self._stop.is_set():
+            try:
+                context = await asyncio.to_thread(self._build, camera_id)
+                self._contexts[camera_id] = context
+                backoff = INITIAL_BACKOFF_S  # a clean start resets the penalty
+
+                await run_camera_loop(context, self._stop, rebuild=self._rebuild)
+                return  # asked to stop
+
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # A camera whose configuration is broken, or whose source
+                # cannot be constructed, must not take the process with it.
+                logger.exception(
+                    "camera_loop_crashed", camera_id=camera_id, retry_in_s=backoff
+                )
+                dead = self._contexts.pop(camera_id, None)
+                if dead is not None:
+                    dead.close()
+
+                try:
+                    await asyncio.wait_for(self._stop.wait(), timeout=backoff)
+                    return
+                except TimeoutError:
+                    backoff = min(backoff * 2, MAX_BACKOFF_S)
+
+    def _build(self, camera_id: int) -> CameraContext:
+        return build_context(
+            camera_id=camera_id,
+            settings=self._settings,
+            session_factory=self._session_factory,
+            loop=self._loop,
+            inference_pool=self._inference_pool,
+            db_pool=self._db_pool,
+            hub=self._hub,
+            reload_signals=self._reload_signals,
+        )
+
+    async def _rebuild(self, old: CameraContext) -> CameraContext:
+        """Reload configuration mid-flight, with a brand-new vote filter.
+
+        Carrying the old filter over would let a redrawn slot inherit the
+        votes of whatever slot previously held its code.
+        """
+        old.close()
+        fresh = await asyncio.to_thread(self._build, old.camera_id)
+        # Metrics survive a reload - they describe the camera, not the config.
+        fresh.metrics = old.metrics
+        self._contexts[old.camera_id] = fresh
+        return fresh
