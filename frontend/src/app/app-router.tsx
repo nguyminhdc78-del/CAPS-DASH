@@ -8,9 +8,21 @@ import { RequireRoleRoute } from './require-role-route'
 import { APP_ROUTES } from './route-definitions'
 
 const LoginPage = lazy(() => import('@/features/auth/login-page'))
+const KioskPage = lazy(() => import('@/features/kiosk/kiosk-page'))
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  {
+    // Outside AppLayout on purpose: the kiosk is a lobby display, and a
+    // sidebar, header and breadcrumb on a screen nobody can click are just
+    // clutter. It still requires a session - resident tier, counts only.
+    path: '/kiosk',
+    element: (
+      <RequireRoleRoute minRole="resident">
+        <KioskPage />
+      </RequireRoleRoute>
+    ),
+  },
   {
     element: <AppLayout />,
     children: [

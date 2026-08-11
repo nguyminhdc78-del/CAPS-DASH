@@ -12,5 +12,21 @@
   "unknown": "Chưa rõ",
   "since": "Từ lúc",
   "duration": "Thời lượng",
-  "occupancy": "Tỉ lệ lấp đầy"
+  "occupancy": "Tỉ lệ lấp đầy",
+  "floor": "Tầng",
+  "allFloors": "Tất cả các tầng",
+  "camera": "Camera",
+  "allCameras": "Tất cả camera",
+  "allStates": "Tất cả trạng thái",
+  "viewGrid": "Lưới",
+  "viewTable": "Bảng",
+  "viewToggleLabel": "Kiểu hiển thị",
+  "viewDetail": "Xem chi tiết",
+  "countsRefreshing": "Đang cập nhật…",
+  "cardAriaLabel": "Ô {{code}}, {{state}}",
+  "detailTitle": "Ô {{code}}",
+  "noCamera": "Không rõ camera",
+  "recentChanges": "Thay đổi gần đây",
+  "noRecentChanges": "Chưa có thay đổi gần đây",
+  "clockSuspect": "Nghi ngờ đồng hồ"
 }

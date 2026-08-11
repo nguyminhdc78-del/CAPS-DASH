@@ -17,5 +17,19 @@
   "SLOT_MAP_INVALID": "The slot map is not valid.",
   "MODEL_UNAVAILABLE": "The detection model is unavailable.",
   "VIEWER_LIMIT_REACHED": "This camera has reached its viewer limit.",
-  "BACKUP_FAILED": "Backup failed."
+  "BACKUP_FAILED": "Backup failed.",
+  "USER_LAST_ADMIN": "This account is the last active administrator. Add or promote another admin before demoting or deactivating this one.",
+  "USER_NAME_TAKEN": "That username is already taken.",
+  "CAMERA_CODE_TAKEN": "That camera code is already in use.",
+  "CAMERA_SOURCE_INVALID": "The source address is not valid for this source type.",
+  "SLOT_CODE_TAKEN": "That slot code is already used on this camera.",
+  "SLOT_MAP_FRAME_MISMATCH": "A slot lies outside the frame it was drawn on.",
+  "POLYGON_DEGENERATE": "That shape has no real area. Move its points apart.",
+  "SNAPSHOT_UNAVAILABLE": "No still image is available from this camera yet.",
+  "AUTH_INACTIVE_USER": "This account is not active.",
+  "AUTH_TOKEN_TYPE_MISMATCH": "Wrong kind of token for this request.",
+  "RANGE_TOO_WIDE": "That date range is too wide. Choose a shorter period.",
+  "RANGE_INVALID": "The start date must come before the end date.",
+  "NOT_IMPLEMENTED": "That feature is not available yet.",
+  "WS_TOO_MANY_CONNECTIONS": "Too many live viewers are connected. Try again shortly."
 }

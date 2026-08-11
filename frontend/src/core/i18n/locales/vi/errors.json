@@ -17,5 +17,19 @@
   "SLOT_MAP_INVALID": "Sơ đồ ô đỗ không hợp lệ.",
   "MODEL_UNAVAILABLE": "Chưa nạp được mô hình nhận diện.",
   "VIEWER_LIMIT_REACHED": "Đã đạt giới hạn số người xem camera này.",
-  "BACKUP_FAILED": "Sao lưu thất bại."
+  "BACKUP_FAILED": "Sao lưu thất bại.",
+  "USER_LAST_ADMIN": "Đây là quản trị viên đang hoạt động cuối cùng. Hãy thêm hoặc nâng quyền một quản trị viên khác trước khi hạ quyền hoặc vô hiệu hoá tài khoản này.",
+  "USER_NAME_TAKEN": "Tên đăng nhập đã được sử dụng.",
+  "CAMERA_CODE_TAKEN": "Mã camera đã được sử dụng.",
+  "CAMERA_SOURCE_INVALID": "Địa chỉ nguồn không hợp lệ với loại nguồn này.",
+  "SLOT_CODE_TAKEN": "Mã chỗ đỗ này đã được dùng cho camera này.",
+  "SLOT_MAP_FRAME_MISMATCH": "Có chỗ đỗ nằm ngoài khung hình đã dùng để vẽ.",
+  "POLYGON_DEGENERATE": "Hình này không có diện tích thực. Hãy tách các điểm ra xa nhau.",
+  "SNAPSHOT_UNAVAILABLE": "Chưa có ảnh tĩnh nào từ camera này.",
+  "AUTH_INACTIVE_USER": "Tài khoản này đang bị vô hiệu hoá.",
+  "AUTH_TOKEN_TYPE_MISMATCH": "Sai loại phiên đăng nhập cho yêu cầu này.",
+  "RANGE_TOO_WIDE": "Khoảng thời gian quá dài. Hãy chọn khoảng ngắn hơn.",
+  "RANGE_INVALID": "Ngày bắt đầu phải trước ngày kết thúc.",
+  "NOT_IMPLEMENTED": "Tính năng này chưa khả dụng.",
+  "WS_TOO_MANY_CONNECTIONS": "Quá nhiều người đang xem trực tiếp. Vui lòng thử lại sau."
 }

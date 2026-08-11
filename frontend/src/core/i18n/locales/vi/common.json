@@ -21,8 +21,16 @@
   "themeDark": "Tối",
   "retry": "Thử lại",
   "back": "Quay lại",
+  "saved": "Đã lưu",
+  "deleted": "Đã xoá",
+  "copy": "Sao chép",
+  "copied": "Đã sao chép",
   "notFoundTitle": "Không tìm thấy trang",
   "forbiddenTitle": "Không đủ quyền",
   "forbiddenDetail": "Tài khoản của bạn không được phép xem mục này.",
-  "unexpectedError": "Đã xảy ra lỗi"
+  "unexpectedError": "Đã xảy ra lỗi",
+  "clockSuspect": "Đồng hồ không đáng tin",
+  "clockSuspectTooltip": "Được ghi khi đồng hồ hệ thống chưa đồng bộ - mốc thời gian này có thể sai",
+  "clockSuspectBannerTitle": "Một số bản ghi có mốc thời gian không đáng tin",
+  "clockSuspectBannerBody": "{{count}} bản ghi được tạo khi đồng hồ hệ thống chưa đồng bộ và bị loại khỏi tổng số bên dưới"
 }

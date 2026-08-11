@@ -11,5 +11,15 @@
   "overstay": "Xe đỗ quá lâu",
   "diskLow": "Dung lượng đĩa thấp",
   "slotOverlap": "Một ô nhận nhiều xe — sơ đồ có thể vẽ lấn sang hàng sau",
-  "clockUnsynced": "Đồng hồ chưa đồng bộ"
+  "clockUnsynced": "Đồng hồ chưa đồng bộ",
+  "createdAt": "Thời điểm tạo",
+  "type": "Loại",
+  "message": "Nội dung",
+  "reliability": "Độ tin cậy",
+  "filterStatus": "Trạng thái",
+  "messages": {
+    "overstay": "Ô {{slot_code}} ({{floor}}) đã có xe đỗ liên tục {{hours}} giờ",
+    "disk_low": "Dung lượng đĩa còn thấp: còn {{free_mib}} MiB"
+  },
+  "openAlertCount": "{{count}} cảnh báo chưa xử lý"
 }

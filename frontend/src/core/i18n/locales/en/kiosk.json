@@ -1,0 +1,14 @@
+{
+  "title": "Parking availability",
+  "free": "Free",
+  "occupied": "Occupied",
+  "unknown": "Unknown",
+  "totalOfFloor": "{{total}} total",
+  "languageToggleAriaLabel": "Switch language",
+  "fullscreenEnter": "Enter fullscreen",
+  "fullscreenExit": "Exit fullscreen",
+  "offlineTitle": "Offline",
+  "offlineNoDataYet": "Waiting for the first update…",
+  "offlineDataAge": "Showing data from {{age}} ago",
+  "noFloorData": "No floor data yet"
+}

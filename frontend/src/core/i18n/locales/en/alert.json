@@ -11,5 +11,15 @@
   "overstay": "Vehicle overstay",
   "diskLow": "Disk space low",
   "slotOverlap": "One slot matched several vehicles - the polygon may overlap the row behind",
-  "clockUnsynced": "Clock not synchronised"
+  "clockUnsynced": "Clock not synchronised",
+  "createdAt": "Created at",
+  "type": "Type",
+  "message": "Message",
+  "reliability": "Reliability",
+  "filterStatus": "Status",
+  "messages": {
+    "overstay": "Slot {{slot_code}} ({{floor}}) has been occupied for {{hours}}h",
+    "disk_low": "Free disk space is low: {{free_mib}} MiB free"
+  },
+  "openAlertCount": "{{count}} open alerts"
 }

@@ -9,6 +9,8 @@ import { LocaleContext } from '@/core/i18n/locale-provider'
 import { useAuth } from '@/core/auth/use-auth'
 import { useThemeMode } from '@/core/theme/use-theme-config'
 
+import { AppAlertBadge } from './app-alert-badge'
+
 const ROLE_LABEL_KEYS: Record<string, string> = {
   resident: 'auth:roleResident',
   security: 'auth:roleSecurity',
@@ -34,6 +36,8 @@ export function AppHeaderBar(): ReactNode {
       </Typography.Text>
 
       <Flex align="center" gap={8}>
+        <AppAlertBadge />
+
         <Tooltip title={t('common:language')}>
           <Button
             type="text"

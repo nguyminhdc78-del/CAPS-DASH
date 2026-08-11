@@ -11,6 +11,7 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "gen:api": "openapi-typescript http://127.0.0.1:8000/openapi.json -o src/core/types/api-schema.d.ts"
   },
   "dependencies": {
@@ -19,9 +20,11 @@
     "antd": "^6.6.0",
     "dayjs": "^1.11.21",
     "i18next": "^26.3.6",
+    "konva": "^10.3.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-i18next": "^17.0.11",
+    "react-konva": "^19.2.5",
     "react-router": "^8.3.0",
     "recharts": "^3.10.1"
   },
@@ -32,6 +35,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.5",
+    "@vitest/coverage-v8": "^4.1.10",
     "jsdom": "^30.0.1",
     "openapi-typescript": "^7.13.0",
     "oxlint": "^1.78.0",

@@ -12,5 +12,21 @@
   "unknown": "Unknown",
   "since": "Since",
   "duration": "Duration",
-  "occupancy": "Occupancy"
+  "occupancy": "Occupancy",
+  "floor": "Floor",
+  "allFloors": "All floors",
+  "camera": "Camera",
+  "allCameras": "All cameras",
+  "allStates": "All states",
+  "viewGrid": "Grid",
+  "viewTable": "Table",
+  "viewToggleLabel": "View",
+  "viewDetail": "View detail",
+  "countsRefreshing": "Refreshing…",
+  "cardAriaLabel": "Slot {{code}}, {{state}}",
+  "detailTitle": "Slot {{code}}",
+  "noCamera": "Unknown camera",
+  "recentChanges": "Recent changes",
+  "noRecentChanges": "No recent changes",
+  "clockSuspect": "Clock suspect"
 }

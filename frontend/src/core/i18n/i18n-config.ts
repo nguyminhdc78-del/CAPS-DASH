@@ -6,15 +6,27 @@ import enAuth from './locales/en/auth.json'
 import enCamera from './locales/en/camera.json'
 import enCommon from './locales/en/common.json'
 import enErrors from './locales/en/errors.json'
+import enHistory from './locales/en/history.json'
+import enKiosk from './locales/en/kiosk.json'
+import enLive from './locales/en/live.json'
+import enRoi from './locales/en/roi.json'
+import enStats from './locales/en/stats.json'
 import enSlot from './locales/en/slot.json'
 import enSystem from './locales/en/system.json'
+import enUser from './locales/en/user.json'
 import viAlert from './locales/vi/alert.json'
 import viAuth from './locales/vi/auth.json'
 import viCamera from './locales/vi/camera.json'
 import viCommon from './locales/vi/common.json'
 import viErrors from './locales/vi/errors.json'
+import viHistory from './locales/vi/history.json'
+import viKiosk from './locales/vi/kiosk.json'
+import viLive from './locales/vi/live.json'
+import viRoi from './locales/vi/roi.json'
+import viStats from './locales/vi/stats.json'
 import viSlot from './locales/vi/slot.json'
 import viSystem from './locales/vi/system.json'
+import viUser from './locales/vi/user.json'
 
 export const SUPPORTED_LANGUAGES = ['vi', 'en'] as const
 export type Language = (typeof SUPPORTED_LANGUAGES)[number]
@@ -37,6 +49,12 @@ const resources = {
     alert: viAlert,
     system: viSystem,
     errors: viErrors,
+    user: viUser,
+    roi: viRoi,
+    history: viHistory,
+    stats: viStats,
+    live: viLive,
+    kiosk: viKiosk,
   },
   en: {
     common: enCommon,
@@ -46,6 +64,12 @@ const resources = {
     alert: enAlert,
     system: enSystem,
     errors: enErrors,
+    user: enUser,
+    roi: enRoi,
+    history: enHistory,
+    stats: enStats,
+    live: enLive,
+    kiosk: enKiosk,
   },
 } as const
 

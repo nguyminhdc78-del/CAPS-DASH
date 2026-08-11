@@ -1,0 +1,14 @@
+{
+  "title": "Tình trạng chỗ đỗ",
+  "free": "Trống",
+  "occupied": "Có xe",
+  "unknown": "Chưa rõ",
+  "totalOfFloor": "Tổng {{total}}",
+  "languageToggleAriaLabel": "Đổi ngôn ngữ",
+  "fullscreenEnter": "Toàn màn hình",
+  "fullscreenExit": "Thoát toàn màn hình",
+  "offlineTitle": "Mất kết nối",
+  "offlineNoDataYet": "Đang chờ dữ liệu đầu tiên…",
+  "offlineDataAge": "Đang hiển thị dữ liệu từ {{age}} trước",
+  "noFloorData": "Chưa có dữ liệu theo tầng"
+}

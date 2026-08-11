@@ -21,8 +21,16 @@
   "themeDark": "Dark",
   "retry": "Retry",
   "back": "Back",
+  "saved": "Saved",
+  "deleted": "Deleted",
+  "copy": "Copy",
+  "copied": "Copied",
   "notFoundTitle": "Page not found",
   "forbiddenTitle": "Not permitted",
   "forbiddenDetail": "Your account is not allowed to view this section.",
-  "unexpectedError": "Something went wrong"
+  "unexpectedError": "Something went wrong",
+  "clockSuspect": "Clock suspect",
+  "clockSuspectTooltip": "Written while the system clock was unsynchronised - this timestamp may be wrong",
+  "clockSuspectBannerTitle": "Some records have an unreliable timestamp",
+  "clockSuspectBannerBody": "{{count}} record(s) were written while the system clock was unsynchronised and are excluded from totals below"
 }

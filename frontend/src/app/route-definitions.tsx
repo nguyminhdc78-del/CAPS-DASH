@@ -14,9 +14,12 @@ import type { ReactNode } from 'react'
 import type { Role } from '@/core/auth/role-ranking'
 
 const DashboardPage = lazy(() => import('@/features/dashboard/dashboard-page'))
-const SlotGridPage = lazy(() => import('@/features/slots/slot-grid-page'))
-const CameraListPage = lazy(() => import('@/features/cameras/camera-list-page'))
+const SlotsPage = lazy(() => import('@/features/slots/slots-page'))
+const CamerasPage = lazy(() => import('@/features/cameras/cameras-page'))
 const LiveViewPage = lazy(() => import('@/features/live/live-view-page'))
+// Konva is a large dependency and only the ROI editor needs it. Lazy here is
+// what keeps it out of the initial bundle everyone else downloads.
+const RoiEditorPage = lazy(() => import('@/features/roi-editor/roi-editor-page'))
 const HistoryPage = lazy(() => import('@/features/history/history-page'))
 const StatisticsPage = lazy(() => import('@/features/statistics/statistics-page'))
 const AlertsPage = lazy(() => import('@/features/alerts/alerts-page'))
@@ -50,15 +53,18 @@ export const APP_ROUTES: AppRoute[] = [
   },
   {
     path: '/slots',
-    element: <SlotGridPage />,
+    element: <SlotsPage />,
     minRole: 'security',
     labelKey: 'slot:title',
     icon: <AppstoreOutlined />,
   },
   {
+    // Camera admin (create/edit/delete/test-connection) is an admin-only
+    // surface - the underlying source_url can carry device credentials, and
+    // create/update/delete all require AdminOnly on the backend anyway.
     path: '/cameras',
-    element: <CameraListPage />,
-    minRole: 'security',
+    element: <CamerasPage />,
+    minRole: 'admin',
     labelKey: 'camera:title',
     icon: <VideoCameraOutlined />,
   },
@@ -66,6 +72,13 @@ export const APP_ROUTES: AppRoute[] = [
     path: '/cameras/:code/live',
     element: <LiveViewPage />,
     minRole: 'security',
+  },
+  {
+    // Admin only: drawing the slot map decides what every occupancy number in
+    // the system means.
+    path: '/cameras/:cameraId/roi',
+    element: <RoiEditorPage />,
+    minRole: 'admin',
   },
   {
     path: '/history',
