@@ -19,6 +19,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # Placeholder values that must never survive into production.
 _UNSAFE_SECRETS = {"", "change-me", "changeme", "secret", "caps"}
 
+# HS256 signs with SHA-256, so a key shorter than the 32-byte digest reduces
+# the effective security of every token. RFC 7518 section 3.2.
+MIN_SECRET_KEY_BYTES = 32
+
 
 class Settings(BaseSettings):
     """Runtime configuration, loaded from process env then `.env`."""
@@ -93,8 +97,17 @@ class Settings(BaseSettings):
         if self.app_env != "prod":
             return self
         problems: list[str] = []
-        if self.secret_key.get_secret_value().strip().lower() in _UNSAFE_SECRETS:
+        secret = self.secret_key.get_secret_value().strip()
+        if secret.lower() in _UNSAFE_SECRETS:
             problems.append("SECRET_KEY is unset or still the placeholder value")
+        elif len(secret.encode()) < MIN_SECRET_KEY_BYTES:
+            # HS256 keys shorter than the hash output weaken the signature -
+            # RFC 7518 section 3.2. Long enough to matter, cheap to satisfy.
+            problems.append(
+                f"SECRET_KEY must be at least {MIN_SECRET_KEY_BYTES} bytes; "
+                "generate one with: python -c \"import secrets;"
+                ' print(secrets.token_urlsafe(48))"'
+            )
         if "*" in self.cors_origins:
             problems.append("CORS_ORIGINS contains '*', which is not allowed in prod")
         if not self.cors_origins:

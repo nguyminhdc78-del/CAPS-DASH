@@ -11,6 +11,7 @@ from collections.abc import Sequence
 
 from ..config.settings import get_settings
 from ..observability.logging_setup import configure_logging
+from .create_admin_command import add_create_admin_parser
 from .migrate_command import add_migrate_parser
 from .seed_demo_command import add_seed_demo_parser
 from .serve_command import add_serve_parser
@@ -24,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_serve_parser(subparsers)
     add_migrate_parser(subparsers)
+    add_create_admin_parser(subparsers)
     add_seed_demo_parser(subparsers)
 
     return parser

@@ -64,13 +64,17 @@ def test_prod_refuses_placeholder_secret_key() -> None:
 
 def test_prod_refuses_wildcard_cors() -> None:
     with pytest.raises(ValidationError, match=r"CORS_ORIGINS contains"):
-        Settings(app_env="prod", secret_key="a-real-secret-value", cors_origins=["*"])
+        Settings(
+            app_env="prod",
+            secret_key="a-real-secret-value-padded-to-32-bytes",
+            cors_origins=["*"],
+        )
 
 
 def test_prod_accepts_a_sound_configuration() -> None:
     settings = Settings(
         app_env="prod",
-        secret_key="a-real-secret-value",
+        secret_key="a-real-secret-value-padded-to-32-bytes",
         cors_origins=["https://caps.local"],
     )
     assert settings.is_prod

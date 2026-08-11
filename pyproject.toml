@@ -92,7 +92,9 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["backend"]
+# "." puts the repo root on sys.path so `tests` is an importable package and
+# test modules can share helpers without relative-import gymnastics.
+pythonpath = ["backend", "."]
 addopts = "-q --strict-markers"
 asyncio_mode = "auto"
 filterwarnings = ["error::DeprecationWarning:caps_dash.*"]

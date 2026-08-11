@@ -21,7 +21,7 @@ def settings(tmp_path) -> Settings:
     """
     return Settings(
         app_env="dev",
-        secret_key="test-secret-not-used-in-prod",
+        secret_key="test-secret-not-used-in-prod-0123456789",
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         backup_dir=tmp_path / "backups",
         spa_dist_dir=tmp_path / "no-frontend-here",

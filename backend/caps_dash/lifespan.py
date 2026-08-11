@@ -17,6 +17,7 @@ from .db.clock_guard import is_clock_suspect
 from .db.engine_factory import create_db_engine
 from .db.session import create_session_factory
 from .observability.logging_setup import get_logger
+from .security.rate_limiter import SlidingWindowLimiter
 
 logger = get_logger(__name__)
 
@@ -35,6 +36,14 @@ def build_lifespan(settings: Settings) -> Lifespan:
 
         state.engine = create_db_engine(settings.database_url)
         state.session_factory = create_session_factory(state.engine)
+
+        # In-process, which is correct rather than a shortcut: one uvicorn
+        # worker by design, so there is no second process to share counters
+        # with. See the CLI for why the worker count is fixed.
+        state.services["login_limiter"] = SlidingWindowLimiter(
+            max_attempts=settings.login_max_attempts,
+            window_s=settings.login_window_s,
+        )
 
         if is_clock_suspect():
             # Say so loudly rather than let every timestamped row be quietly
