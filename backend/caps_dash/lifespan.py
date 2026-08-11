@@ -9,6 +9,7 @@ across modules that import each other for side effects.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import threading
 from collections.abc import AsyncIterator, Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -89,6 +90,8 @@ def build_lifespan(settings: Settings) -> Lifespan:
         # single thread makes contention structurally impossible instead of
         # something busy_timeout has to keep absorbing.
         db_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dbwrite")
+
+        _warn_if_websockets_missing()
 
         hub = BroadcastHub()
         reload_signals = ReloadSignals(loop)
@@ -188,6 +191,27 @@ def build_lifespan(settings: Settings) -> Lifespan:
             logger.info("shutdown_complete")
 
     return lifespan
+
+
+def _warn_if_websockets_missing() -> None:
+    """Say at startup that the live view will not work, not on first connect.
+
+    Plain `uvicorn` has no WebSocket implementation; only `uvicorn[standard]`
+    pulls one in. Without it every `/ws/...` upgrade is answered with a bare
+    404 while the whole REST API keeps working perfectly - so the live view
+    looks broken for its own reasons and nobody suspects a missing dependency.
+    This happened on a real deployment: the board had a system-wide `uvicorn`
+    that satisfied the import, and the extra was never installed.
+    """
+    if importlib.util.find_spec("websockets") or importlib.util.find_spec("wsproto"):
+        return
+    logger.error(
+        "websocket_library_missing",
+        detail=(
+            "no websockets/wsproto installed, so /ws/* will answer 404 and the "
+            "live camera view cannot connect; install uvicorn[standard]"
+        ),
+    )
 
 
 def _safe_db_url(url: str) -> str:
