@@ -44,7 +44,7 @@ dev = [
 vision-dev = ["ultralytics>=8.3"]
 
 [project.scripts]
-caps-dash = "caps_dash.cli:main"
+caps-dash = "caps_dash.cli.main:main"
 
 [tool.setuptools]
 package-dir = { "" = "backend" }

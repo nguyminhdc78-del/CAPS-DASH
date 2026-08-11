@@ -13,6 +13,9 @@ from fastapi import FastAPI
 
 from .app_state import AppState
 from .config.settings import Settings
+from .db.clock_guard import is_clock_suspect
+from .db.engine_factory import create_db_engine
+from .db.session import create_session_factory
 from .observability.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -29,6 +32,18 @@ def build_lifespan(settings: Settings) -> Lifespan:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         state = AppState(settings=settings)
         app.state.caps = state
+
+        state.engine = create_db_engine(settings.database_url)
+        state.session_factory = create_session_factory(state.engine)
+
+        if is_clock_suspect():
+            # Say so loudly rather than let every timestamped row be quietly
+            # wrong. The board has no RTC battery; rows written before NTP
+            # catches up are flagged and reports exclude them.
+            logger.warning(
+                "clock_suspect",
+                detail="system clock is implausible; time-stamped rows will be flagged",
+            )
 
         logger.info(
             "startup",

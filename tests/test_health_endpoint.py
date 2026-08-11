@@ -40,13 +40,21 @@ def test_unknown_api_path_returns_envelope_not_spa_shell(client: TestClient) -> 
     assert "html" not in response.headers.get("content-type", "")
 
 
-def test_readiness_names_the_failing_component(client: TestClient) -> None:
+def test_readiness_reports_each_component_by_name(client: TestClient) -> None:
+    """A bare boolean says something is wrong but not what. Name the component."""
     response = client.get("/api/health/ready")
     assert response.status_code == 200
     body = response.json()
-    # Phase 01 has no database wired yet, so readiness is honestly false.
+    assert body["ready"] is True
+    assert body["components"][0] == {"name": "database", "ready": True, "detail": ""}
+
+
+def test_readiness_is_false_when_the_database_is_unusable(app, client: TestClient) -> None:
+    """Readiness must actually touch the database, not just check for a factory."""
+    app.state.caps.session_factory = None
+    body = client.get("/api/health/ready").json()
     assert body["ready"] is False
-    assert body["components"][0]["name"] == "database"
+    assert body["components"][0]["detail"] == "not initialised"
 
 
 def test_prod_refuses_placeholder_secret_key() -> None:
