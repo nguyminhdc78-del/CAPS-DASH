@@ -1,10 +1,19 @@
 """Alembic environment.
 
-Two things here are load-bearing:
+Three things here are load-bearing:
 
 * `render_as_batch=True` - SQLite cannot ALTER a column, drop a constraint, or
   rename much of anything. Batch mode makes Alembic rebuild the table instead.
   Without it the second schema change of this project's life fails.
+* **Foreign keys are OFF while migrations run.** This is not a shortcut; it is
+  what makes batch mode safe. A batch rebuild is `CREATE TABLE tmp` ->
+  `INSERT SELECT` -> `DROP TABLE cameras` -> `RENAME`, and with foreign keys
+  enforced that DROP cascades: every `parking_slots` row referencing a camera
+  is deleted, and their `slot_state_history` with them. A schema change that
+  touches no data would silently destroy all of it. SQLite's own documentation
+  for "making other kinds of table schema changes" says to disable foreign
+  keys for exactly this reason. Learned the hard way - it wiped a live board's
+  slot map.
 * The URL comes from application settings, not from alembic.ini, so there is
   one source of truth for where the database lives.
 """
@@ -58,7 +67,21 @@ def _run(connection: Connection) -> None:
 def run_migrations_online() -> None:
     engine = create_db_engine(_database_url())
     with engine.connect() as connection:
-        _run(connection)
+        # SQLite ignores this pragma inside a transaction, so it has to run
+        # before one opens - and the `commit()` immediately after is just as
+        # load-bearing. Issuing the pragma itself begins an implicit
+        # transaction; leaving it open means Alembic's own transaction nests
+        # inside it and never commits, so the schema changes apply but the
+        # `alembic_version` row is rolled back at close. The database then
+        # looks migrated while claiming it is not, and the next `migrate` run
+        # tries to create tables that already exist.
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.commit()
+        try:
+            _run(connection)
+        finally:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.commit()
     engine.dispose()
 
 

@@ -35,6 +35,17 @@
 static const char *WIFI_SSID = "CHANGE_ME";
 static const char *WIFI_PASSWORD = "CHANGE_ME";
 
+// A fixed address, because the camera's URL is stored in the CAPS-DASH
+// database. A DHCP lease that moves after a power cut would leave every
+// camera row pointing at nothing, and the failure looks like a dead camera
+// rather than a changed address. Set USE_STATIC_IP to false to let DHCP
+// assign one anyway.
+static const bool USE_STATIC_IP = true;
+static const IPAddress STATIC_IP(192, 168, 137, 50);
+static const IPAddress GATEWAY(192, 168, 137, 1);
+static const IPAddress SUBNET(255, 255, 255, 0);
+static const IPAddress DNS_SERVER(192, 168, 137, 1);
+
 // Shown in /status. Give each module a distinct one - it is the only way to
 // tell two identical boards apart on the network.
 static const char *CAMERA_CODE = "cam-01";
@@ -239,6 +250,14 @@ static void handleStatus() {
 static void connectWifi() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);  // power save adds hundreds of ms to a polled request
+
+  if (USE_STATIC_IP && !WiFi.config(STATIC_IP, GATEWAY, SUBNET, DNS_SERVER)) {
+    // Say so and carry on: a DHCP address still works, it just moves. Silent
+    // failure here would be worse - the module would look fine until the
+    // address changed and every stored camera URL stopped resolving.
+    Serial.println("static IP config failed; falling back to DHCP");
+  }
+
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   Serial.print("connecting to WiFi");
