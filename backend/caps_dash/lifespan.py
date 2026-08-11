@@ -9,9 +9,11 @@ across modules that import each other for side effects.
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import AsyncIterator, Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from functools import partial
 
 from fastapi import FastAPI
 
@@ -20,6 +22,14 @@ from .config.settings import Settings
 from .db.clock_guard import is_clock_suspect
 from .db.engine_factory import create_db_engine
 from .db.session import create_session_factory
+from .jobs import (
+    disk_space_alert_job,
+    hourly_aggregation_job,
+    overstay_alert_job,
+    rate_limiter_sweep_job,
+    retention_purge_job,
+)
+from .jobs.interval_scheduler import JobScheduler, PeriodicJob
 from .observability.logging_setup import get_logger
 from .realtime.broadcast_hub import BroadcastHub
 from .security.rate_limiter import SlidingWindowLimiter
@@ -34,6 +44,21 @@ Lifespan = Callable[[FastAPI], AbstractAsyncContextManager[None]]
 
 SHUTDOWN_TIMEOUT_S = 10.0
 
+# Fixed cadences for the phase-13 background jobs. Not settings: unlike the
+# business thresholds in `config/settings.py` (overstay hours, disk
+# percentage, ...), how OFTEN each job wakes up is an operational wiring
+# detail nobody has asked to tune per deployment. `aggregation_interval_s`
+# is the one exception - it is a setting because catching up on a stopped
+# aggregator is itself tunable work (see `hourly_aggregation_service.py`).
+OVERSTAY_INTERVAL_S = 300.0  # 5 min
+DISK_SPACE_INTERVAL_S = 900.0  # 15 min
+RETENTION_PURGE_INTERVAL_S = 86_400.0  # daily
+RATE_LIMITER_SWEEP_INTERVAL_S = 3_600.0  # hourly
+
+# Staggered so five jobs do not all wake in the same second on a board that
+# also has to keep every camera loop fed - see `interval_scheduler.py`.
+_STAGGER_STEP_S = 20.0
+
 
 def build_lifespan(settings: Settings) -> Lifespan:
     """Return a lifespan bound to these settings."""
@@ -44,7 +69,13 @@ def build_lifespan(settings: Settings) -> Lifespan:
         app.state.caps = state
 
         state.engine = create_db_engine(settings.database_url)
-        state.session_factory = create_session_factory(state.engine)
+        # Captured locally, not just read back off `state`: `state.
+        # session_factory` is typed `Optional` (phase 01 leaves it `None`
+        # before this line runs), and re-reading it below for the job
+        # partials would force every call site to re-narrow that `Optional`
+        # for no reason - this line is the one place that constructs it.
+        session_factory = create_session_factory(state.engine)
+        state.session_factory = session_factory
 
         loop = asyncio.get_running_loop()
 
@@ -63,7 +94,7 @@ def build_lifespan(settings: Settings) -> Lifespan:
         reload_signals = ReloadSignals(loop)
         supervisor = CameraSupervisor(
             settings=settings,
-            session_factory=state.session_factory,
+            session_factory=session_factory,
             loop=loop,
             inference_pool=inference_pool,
             db_pool=db_pool,
@@ -71,15 +102,56 @@ def build_lifespan(settings: Settings) -> Lifespan:
             reload_signals=reload_signals,
         )
 
+        login_limiter = SlidingWindowLimiter(
+            max_attempts=settings.login_max_attempts,
+            window_s=settings.login_window_s,
+        )
+
         state.hub = hub
         state.supervisor = supervisor
         state.services["reload_signals"] = reload_signals
         state.services["inference_pool"] = inference_pool
         state.services["db_pool"] = db_pool
-        state.services["login_limiter"] = SlidingWindowLimiter(
-            max_attempts=settings.login_max_attempts,
-            window_s=settings.login_window_s,
-        )
+        state.services["login_limiter"] = login_limiter
+        # Backup and purge are rare, heavy, admin-triggered operations; this
+        # keeps two from ever running at once (Security Considerations,
+        # phase 13). A plain `threading.Lock` is enough - `app.state.caps` is
+        # one process, one instance, by design (see `cli/serve_command.py`).
+        state.services["system_op_lock"] = threading.Lock()
+
+        job_scheduler = JobScheduler(db_pool=db_pool, loop=loop)
+        jobs = [
+            PeriodicJob(
+                name="hourly_aggregation",
+                interval_s=settings.aggregation_interval_s,
+                run=partial(hourly_aggregation_job.run, session_factory),
+                initial_delay_s=_STAGGER_STEP_S * 0,
+            ),
+            PeriodicJob(
+                name="overstay_alert",
+                interval_s=OVERSTAY_INTERVAL_S,
+                run=partial(overstay_alert_job.run, session_factory, settings),
+                initial_delay_s=_STAGGER_STEP_S * 1,
+            ),
+            PeriodicJob(
+                name="disk_space_alert",
+                interval_s=DISK_SPACE_INTERVAL_S,
+                run=partial(disk_space_alert_job.run, session_factory, settings),
+                initial_delay_s=_STAGGER_STEP_S * 2,
+            ),
+            PeriodicJob(
+                name="retention_purge",
+                interval_s=RETENTION_PURGE_INTERVAL_S,
+                run=partial(retention_purge_job.run, session_factory, settings),
+                initial_delay_s=_STAGGER_STEP_S * 3,
+            ),
+            PeriodicJob(
+                name="rate_limiter_sweep",
+                interval_s=RATE_LIMITER_SWEEP_INTERVAL_S,
+                run=partial(rate_limiter_sweep_job.run, session_factory, login_limiter),
+                initial_delay_s=_STAGGER_STEP_S * 4,
+            ),
+        ]
 
         if is_clock_suspect():
             # Said out loud rather than letting every timestamped row be
@@ -99,12 +171,14 @@ def build_lifespan(settings: Settings) -> Lifespan:
         )
 
         await supervisor.start()
+        job_scheduler.start(jobs)
 
         try:
             yield
         finally:
             # Reverse order. Stop producing work before tearing down the
             # things that work depends on, or shutdown races itself.
+            await job_scheduler.stop()
             await supervisor.stop(timeout=SHUTDOWN_TIMEOUT_S)
             hub.close_all()
             inference_pool.shutdown(wait=True, cancel_futures=True)
