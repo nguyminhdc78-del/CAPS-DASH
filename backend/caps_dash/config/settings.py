@@ -1,0 +1,114 @@
+"""Application settings.
+
+Every tunable lives here. Nothing is hardcoded at its point of use - the
+reference project scattered constants across modules and shipped an admin
+password in source, which is exactly what this module exists to prevent.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+# Placeholder values that must never survive into production.
+_UNSAFE_SECRETS = {"", "change-me", "changeme", "secret", "caps"}
+
+
+class Settings(BaseSettings):
+    """Runtime configuration, loaded from process env then `.env`."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
+
+    # --- Environment -------------------------------------------------------
+    app_env: Literal["dev", "prod"] = "dev"
+    app_name: str = "CAPS-DASH"
+    host: str = "0.0.0.0"  # noqa: S104 - binding all interfaces is intended on the board
+    port: int = 8000
+
+    # --- Security ----------------------------------------------------------
+    secret_key: SecretStr = SecretStr("change-me")
+    cors_origins: list[str] = Field(default_factory=list)
+    access_token_ttl_min: int = 15
+    refresh_token_ttl_days: int = 7
+    login_max_attempts: int = 5
+    login_window_s: int = 300
+
+    # --- Storage -----------------------------------------------------------
+    database_url: str = f"sqlite:///{REPO_ROOT / 'data' / 'caps.db'}"
+    backup_dir: Path = REPO_ROOT / "data" / "backups"
+    # 6 months, not 12: the deployment host is an Arduino UNO Q writing to
+    # flash, where both capacity and write endurance are limited.
+    retention_months: int = 6
+
+    # --- Vision pipeline ---------------------------------------------------
+    detector_backend: Literal["onnx", "ultralytics", "fake"] = "onnx"
+    model_path: Path = REPO_ROOT / "models" / "yolo-vehicle.onnx"
+    # One worker, one model in RAM. On a QRB2210 sharing its CPU with the API,
+    # the SPA and SQLite, this is the correct default rather than a placeholder.
+    inference_pool_size: int = 1
+    inference_input_size: int = 640
+    detector_confidence: float = 0.25
+    # The reference project's own config notes record that 1.0s x 3 flickered
+    # and that a real deployment wants roughly 3.0s x 4.
+    default_poll_interval_s: float = 3.0
+    default_vote_window: int = 5
+    default_vote_threshold: int = 4
+    camera_timeout_s: float = 5.0
+    camera_fail_streak_offline: int = 3
+
+    # --- Realtime ----------------------------------------------------------
+    ws_auth_deadline_s: float = 5.0
+    ws_heartbeat_s: float = 20.0
+    ws_max_viewers_per_camera: int = 4
+
+    # --- Web ---------------------------------------------------------------
+    spa_dist_dir: Path = REPO_ROOT / "frontend" / "dist"
+
+    # --- Observability -----------------------------------------------------
+    log_level: str = "INFO"
+    log_json: bool = True
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, value: object) -> object:
+        """Accept a comma-separated string so `.env` stays readable."""
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @model_validator(mode="after")
+    def _refuse_unsafe_production(self) -> Settings:
+        """Fail fast rather than run a production box with dev defaults."""
+        if self.app_env != "prod":
+            return self
+        problems: list[str] = []
+        if self.secret_key.get_secret_value().strip().lower() in _UNSAFE_SECRETS:
+            problems.append("SECRET_KEY is unset or still the placeholder value")
+        if "*" in self.cors_origins:
+            problems.append("CORS_ORIGINS contains '*', which is not allowed in prod")
+        if not self.cors_origins:
+            problems.append("CORS_ORIGINS is empty; list the dashboard's real origin")
+        if problems:
+            raise ValueError("Refusing to start in prod: " + "; ".join(problems))
+        return self
+
+    @property
+    def is_prod(self) -> bool:
+        return self.app_env == "prod"
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Process-wide settings singleton."""
+    return Settings()

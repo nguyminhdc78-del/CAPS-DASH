@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "caps-dash"
+version = "0.1.0"
+description = "CAPS-DASH - building car-park administration dashboard"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
+
+# Versions resolved from PyPI at scaffold time (2026-08-11), never copied from
+# secondary sources. Upper bound at the next major/minor so an unattended
+# install cannot silently pull a breaking release onto the board.
+dependencies = [
+    "fastapi>=0.141,<0.142",
+    "uvicorn[standard]>=0.52,<0.53",
+    "pydantic>=2.13,<3",
+    "pydantic-settings>=2.15,<3",
+    "structlog>=26.1,<27",
+    "sqlalchemy>=2.0.51,<2.1",
+    "alembic>=1.19,<2",
+    "pyjwt>=2.13,<3",
+    "argon2-cffi>=25.1,<26",
+    "httpx>=0.28,<0.29",
+    "python-multipart>=0.0.20",
+    "numpy>=2.5,<3",
+    "onnxruntime>=1.28,<2",
+    "opencv-python-headless>=4.12,<5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4",
+    "pytest-cov>=7.0",
+    "pytest-asyncio>=1.2",
+    "ruff>=0.14",
+    "mypy>=1.18",
+    "types-requests",
+]
+# Ultralytics is AGPL-3.0. It exists ONLY to export a .onnx on a developer
+# machine and must never enter the deployed dependency set.
+vision-dev = ["ultralytics>=8.3"]
+
+[project.scripts]
+caps-dash = "caps_dash.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "backend" }
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["backend", "tests"]
+# Agent tooling and planning notes ship their own Python; they are not our
+# source and must not gate our build.
+extend-exclude = [".claude", ".opencode", ".venv", "plans", "frontend"]
+
+[tool.ruff.lint]
+# "S" is flake8-bandit. This app holds credentials and runs on a box in a
+# security room; a security linter earns its keep here.
+select = ["E", "F", "I", "B", "UP", "SIM", "ANN", "RUF", "S"]
+ignore = [
+    "ANN401", # typed **kwargs as Any is unavoidable at framework boundaries
+    "B008",   # FastAPI's Depends() in defaults is the documented idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: pytest's whole idiom is `assert`.
+# S105/S106: test fixtures legitimately contain literal dummy secrets.
+"tests/*" = ["ANN201", "ANN001", "S101", "S105", "S106"]
+# S105 false positive: these are error-code names that happen to contain
+# "TOKEN", not credentials.
+"backend/caps_dash/errors/codes.py" = ["S105"]
+"backend/caps_dash/db/migrations/*" = ["ANN201", "E501", "I001"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+mypy_path = "backend"
+explicit_package_bases = true
+exclude = ["backend/caps_dash/db/migrations/versions/"]
+
+[[tool.mypy.overrides]]
+module = ["cv2.*", "onnxruntime.*", "ultralytics.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["backend"]
+addopts = "-q --strict-markers"
+asyncio_mode = "auto"
+filterwarnings = ["error::DeprecationWarning:caps_dash.*"]
