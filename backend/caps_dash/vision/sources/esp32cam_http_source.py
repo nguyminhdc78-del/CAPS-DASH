@@ -11,6 +11,7 @@ from __future__ import annotations
 import httpx
 
 from ...db.types import utc_now
+from ...observability.credential_redaction import redact_credentials
 from ...observability.logging_setup import get_logger
 from .base import Frame, FrameSource, failed_frame
 from .jpeg_utils import decode_jpeg
@@ -68,6 +69,12 @@ class Esp32CamHttpSource(FrameSource):
         self._client.close()
 
     def _fail(self, error: str) -> Frame:
+        # Redacted at the origin, not at each sink. An httpx error stringifies
+        # the request URL, so a camera configured with `user:password@host`
+        # would otherwise write its own credentials into the log line, into
+        # `cameras.last_error`, and from there into the camera list that every
+        # security-role user can read.
+        error = redact_credentials(error)
         self._fail_streak += 1
         logger.warning(
             "frame_read_failed",
