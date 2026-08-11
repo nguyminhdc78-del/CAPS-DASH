@@ -33,3 +33,19 @@ class Page[T](BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# Declared once on the aggregate router rather than per route. Without it
+# `ErrorEnvelope` never reaches `components.schemas`, and every error branch in
+# the generated TypeScript is `any` - which defeats the point of generating
+# types from the contract at all.
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {"model": ErrorEnvelope, "description": "Malformed request"},
+    401: {"model": ErrorEnvelope, "description": "Authentication required or failed"},
+    403: {"model": ErrorEnvelope, "description": "Insufficient role"},
+    404: {"model": ErrorEnvelope, "description": "No such resource"},
+    409: {"model": ErrorEnvelope, "description": "Conflicts with existing data"},
+    422: {"model": ErrorEnvelope, "description": "Validation failed"},
+    429: {"model": ErrorEnvelope, "description": "Rate limited"},
+    500: {"model": ErrorEnvelope, "description": "Unexpected server error"},
+}

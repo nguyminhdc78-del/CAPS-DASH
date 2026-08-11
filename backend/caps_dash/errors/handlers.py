@@ -7,6 +7,9 @@ frames to a browser.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Any
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -29,6 +32,24 @@ _STATUS_TO_CODE = {
     422: ErrorCode.VALIDATION_FAILED,
     429: ErrorCode.RATE_LIMITED,
 }
+
+
+# Pydantic validator error types that deserve their own code rather than a
+# generic VALIDATION_FAILED. Without this a degenerate polygon and a missing
+# field are indistinguishable to the client, so the ROI editor cannot tell the
+# operator *what* is wrong with the shape they just drew.
+_PYDANTIC_TYPE_TO_CODE = {
+    "polygon_degenerate": ErrorCode.POLYGON_DEGENERATE,
+}
+
+
+def _specific_code_for(errors: Sequence[Any]) -> ErrorCode:
+    """First recognised validator type wins; otherwise the generic code."""
+    for error in errors:
+        code = _PYDANTIC_TYPE_TO_CODE.get(str(error.get("type", "")))
+        if code is not None:
+            return code
+    return ErrorCode.VALIDATION_FAILED
 
 
 def build_envelope(
@@ -74,16 +95,16 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _validation_error(
         _request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        errors = exc.errors()
         fields = {
             ".".join(str(part) for part in error["loc"][1:]) or "body": error["msg"]
-            for error in exc.errors()
+            for error in errors
         }
-        logger.warning("validation_failed", fields=sorted(fields))
+        code = _specific_code_for(errors)
+        logger.warning("validation_failed", code=str(code), fields=sorted(fields))
         return JSONResponse(
             status_code=422,
-            content=build_envelope(
-                ErrorCode.VALIDATION_FAILED, "Request payload failed validation", {"fields": fields}
-            ),
+            content=build_envelope(code, "Request payload failed validation", {"fields": fields}),
         )
 
     @app.exception_handler(StarletteHTTPException)
