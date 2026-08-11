@@ -318,8 +318,12 @@ See [`docs/deployment-guide.md`](docs/deployment-guide.md) for the full referenc
 
 ## Performance & Capacity
 
-**Designed for** 1-6 simultaneous cameras. Nothing here has been load-tested or
-benchmarked, on simulated sources or on the target board.
+**Measured on the target board** (Arduino UNO Q, aarch64, 4 cores): a median
+616 ms per inference at 640x640. Inference is serialised, so the default 3 s
+poll supports roughly three cameras with headroom; six needs a 5 s poll. See
+`docs/deployment-guide.md`.
+
+No end-to-end soak test has been run, and no accuracy figure has been measured.
 
 **Limits**:
 - Up to 4 WebSocket viewers per camera, 16 total concurrent.

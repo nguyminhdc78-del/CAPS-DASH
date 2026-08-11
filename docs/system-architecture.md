@@ -257,9 +257,15 @@ If a camera crashes (network timeout, malformed JPEG, detector crash):
 
 ## Scaling Constraints (Known Limits)
 
-**Design target**: 1-6 concurrent cameras with a browser viewer each. This is
-the scale the system was designed and configured for, not a measured ceiling -
-no load test has been run.
+**Measured ceiling** (2026-08-12, on the real board): inference costs a median
+616 ms per frame (fastest 502, slowest 1440) for YOLO26-nano at 640x640 on the
+UNO Q's four aarch64 cores, via onnxruntime 1.28.0 on the CPU provider.
+
+Inference is serialised through one worker, so at the default 3 s poll the
+budget is ~4.8 cameras before the API, SQLite and the SPA get any CPU at all.
+The 1-6 camera design target therefore holds only if the poll interval is
+raised to 5 s or more beyond three cameras. See `deployment-guide.md` for the
+arithmetic and the per-count guidance.
 
 - **Viewers per camera**: 4 max (tunable in settings).
 - **Total concurrent viewers**: 16 max.

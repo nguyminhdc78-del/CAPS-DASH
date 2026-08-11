@@ -108,3 +108,5 @@ models/*.onnx.tmp
 # Frontend
 frontend/node_modules/
 frontend/dist/
+# Ops-only tooling (paramiko for board access); never part of the app.
+.venv-ops/

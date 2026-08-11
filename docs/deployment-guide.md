@@ -390,9 +390,49 @@ Future versions might expose Prometheus metrics at `/metrics`. Currently, monito
 - **Target**: RSS growth < 5% per 8 hours.
 - **To be recorded after phase 14, step 13**.
 
-### CPU
-- **Peak (6 cameras, all detecting)**: Unmeasured.
-- **Idle (no detections)**: Minimal (poll loop only).
+### CPU and inference latency — measured
+
+Measured 2026-08-12 on the real board: Arduino UNO Q, Debian 13 (trixie),
+aarch64, 4 cores, 1.7 GB RAM, glibc 2.41, Python 3.13.5, onnxruntime 1.28.0,
+CPU execution provider. Ten runs of the shipped `yolo-vehicle.onnx`
+(YOLO26-nano, 640x640), warm session:
+
+| | ms |
+|---|---|
+| fastest | 502 |
+| median | 616 |
+| slowest | 1440 |
+
+onnxruntime uses every core by default, so this figure already has all four.
+Available providers on this SoC are `AzureExecutionProvider` and
+`CPUExecutionProvider` - there is no NPU path, as predicted in
+`models/README.md`.
+
+**This bounds camera count, and it bounds it lower than the 1-6 design
+target.** Inference is serialised through one worker (`INFERENCE_POOL_SIZE=1`,
+one model in memory - deliberate, not a default). At the default 3 s poll:
+
+```
+budget per 3 s window   3000 ms
+cost per camera tick   ~ 616 ms
+max cameras            ~ 4.8, before the API, SQLite and the SPA get any CPU
+```
+
+Practical guidance:
+
+- **1-3 cameras**: fine at `CAMERA_POLL_INTERVAL_S=3`, with headroom.
+- **4-6 cameras**: raise the poll interval to 5 s or more. Six cameras need
+  ~3.7 s of inference per round; at a 3 s poll the loops fall permanently
+  behind and slot states go stale without anything reporting an error.
+- **More than 6**: not this hardware, at this input size.
+
+The 1440 ms slowest run matters as much as the median: a tick occasionally
+takes more than twice the typical time, so leave slack rather than tuning the
+poll interval to the median.
+
+### Idle CPU
+Minimal - the poll loop only. Nothing is encoded and no frame is published
+unless somebody is watching a live view.
 
 ### Storage
 All unmeasured. What is known structurally: history rows are written only when a
