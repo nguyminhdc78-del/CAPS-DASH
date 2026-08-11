@@ -142,3 +142,55 @@ def test_boxes_are_mapped_back_through_the_letterbox() -> None:
     # x: (320 +/- 20 - 0) / 0.5 ; y: (320 +/- 20 - 80) / 0.5
     assert (found.x1, found.x2) == (600.0, 680.0)
     assert (found.y1, found.y2) == (440.0, 480.0)
+
+
+# --- End-to-end (NMS-free) head, as exported by YOLO26 -----------------------
+
+
+def _end_to_end_output(rows: list[list[float]]) -> np.ndarray:
+    """`[1, N, 6]`: x1, y1, x2, y2, score, class_id - already NMS'd."""
+    return np.array([rows], dtype=np.float32)
+
+
+def test_end_to_end_head_is_decoded_without_a_second_nms():
+    """YOLO26 removed NMS from the pipeline; the graph output is final.
+
+    Running the classic path over this layout does not raise - it reads
+    columns 4 and 5 as two class scores, so a class id of 59 becomes a
+    confidence of 59.0 and the frame silently decodes to nothing. That is the
+    failure this test exists to catch.
+    """
+    raw = _end_to_end_output(
+        [
+            [10.0, 20.0, 110.0, 220.0, 0.90, 2.0],  # car
+            [300.0, 40.0, 380.0, 160.0, 0.80, 7.0],  # truck
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],  # padding row
+        ]
+    )
+
+    detections = decode_yolo_output(raw, scale=1.0, pad=(0.0, 0.0),
+                                    orig_w=640, orig_h=640, confidence=0.25)
+
+    assert [d.label for d in detections] == ["car", "truck"]
+    assert detections[0].confidence == pytest.approx(0.90)
+    # xyxy already - a cxcywh conversion here would move every box.
+    assert (detections[0].x1, detections[0].y1) == pytest.approx((10.0, 20.0))
+    assert (detections[0].x2, detections[0].y2) == pytest.approx((110.0, 220.0))
+
+
+def test_end_to_end_head_drops_non_vehicle_classes():
+    raw = _end_to_end_output(
+        [
+            [10.0, 20.0, 110.0, 220.0, 0.99, 0.0],  # person
+            [10.0, 20.0, 110.0, 220.0, 0.95, 15.0],  # cat
+        ]
+    )
+
+    assert decode_yolo_output(raw, 1.0, (0.0, 0.0), 640, 640, 0.25) == []
+
+
+def test_end_to_end_head_respects_the_confidence_floor():
+    raw = _end_to_end_output([[10.0, 20.0, 110.0, 220.0, 0.30, 2.0]])
+
+    assert len(decode_yolo_output(raw, 1.0, (0.0, 0.0), 640, 640, 0.25)) == 1
+    assert decode_yolo_output(raw, 1.0, (0.0, 0.0), 640, 640, 0.50) == []

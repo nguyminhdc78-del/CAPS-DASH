@@ -24,6 +24,13 @@ VEHICLE_CLASS_LABELS: dict[int, str] = {
     7: "truck",
 }
 
+# Width of an end-to-end (NMS-free) head row: x1, y1, x2, y2, score, class_id.
+# A classic YOLO head is 4 + num_classes wide, and this project ships a stock
+# 80-class COCO model, so 84 - six columns can only mean the end-to-end
+# layout. Retraining to exactly two classes would make this ambiguous; if that
+# ever happens, the decoder needs an explicit setting rather than a guess.
+END_TO_END_COLUMNS = 6
+
 # Per-class NMS IoU threshold. 0.45 is the common YOLO default: two boxes
 # overlapping more than this are almost certainly the same vehicle counted
 # twice, not two vehicles parked touching each other.

@@ -28,7 +28,7 @@ class UltralyticsVehicleDetector(VehicleDetector):
     def __init__(self, weights_path: Path, confidence: float = 0.25) -> None:
         super().__init__(confidence)
         try:
-            from ultralytics import YOLO
+            from ultralytics import YOLO  # type: ignore[attr-defined]
         except ImportError as exc:
             raise AppError(
                 "ultralytics is not installed. Install the 'vision-dev' extra for "

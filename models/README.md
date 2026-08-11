@@ -27,14 +27,28 @@ On a development machine (not the board):
 
 ```bash
 pip install -e ".[vision-dev]"
-python -m caps_dash.vision.export_onnx --weights yolo11n.pt --out models/yolo-vehicle.onnx
+python -m caps_dash.vision.export_onnx --weights yolo26n.pt
 ```
 
 Record what was exported below whenever it changes.
 
 | Date | Source weights | Input size | Notes |
 |---|---|---|---|
-| _pending_ | — | 640 | Placeholder until the first export |
+| 2026-08-12 | yolo26n.pt (ultralytics 8.4.117) | 640 | End-to-end head, `[1, 300, 6]` |
+
+## Head layout, and why it is worth writing down
+
+YOLO26 exports an **end-to-end** head: `[1, 300, 6]` of
+`(x1, y1, x2, y2, score, class_id)`, with NMS already applied inside the
+graph. YOLOv8 and YOLO11 export the classic `[1, 4 + num_classes, N]` of
+cxcywh boxes and per-class scores, NMS still to run.
+
+`detectors/onnx_decode.py` handles both and picks by row width. Getting this
+wrong does not raise: the classic path reads columns 4 and 5 of an end-to-end
+row as two class scores, so a class id of 59 is read as a confidence of 59.0
+and every frame decodes to nothing. If you export a different model family,
+check the printed `output_shape` in the `onnx_session_loaded` log line against
+what the decoder expects.
 
 ## Runtime notes for the target board
 
