@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # 6 months, not 12: the deployment host is an Arduino UNO Q writing to
     # flash, where both capacity and write endurance are limited.
     retention_months: int = 6
+    # Backups are cheap individually but each is a full copy of the live
+    # database; unbounded retention would itself become a flash-capacity
+    # problem. Five gives a week or two of daily backups without babysitting.
+    backup_keep_count: int = 5
 
     # --- Vision pipeline ---------------------------------------------------
     detector_backend: Literal["onnx", "ultralytics", "fake"] = "onnx"
@@ -70,11 +74,57 @@ class Settings(BaseSettings):
     default_vote_threshold: int = 4
     camera_timeout_s: float = 5.0
     camera_fail_streak_offline: int = 3
+    # A live snapshot is a real request to the camera, and the ROI editor is
+    # opened repeatedly while drawing. Reuse the worker's still for this long
+    # before going back to the device.
+    snapshot_max_age_s: float = 10.0
+
+    # --- Reporting ---------------------------------------------------------
+    # A range is mandatory on history queries, and capped: the largest table in
+    # the system is on flash storage behind a shared CPU, and one accidental
+    # unbounded scan is enough to stall every camera loop behind it.
+    history_default_span_days: int = 7
+    history_max_span_days: int = 92
+    # How often the hourly aggregation job looks for closed hours it has not
+    # summarised yet. Short enough that a chart is never more than ~10 minutes
+    # stale, long enough not to compete with inference for CPU every tick.
+    aggregation_interval_s: float = 600.0
+    # A row cap on `/exports/history.csv`, not a page size: past this the
+    # caller must narrow the filters. Keeps a single export request bounded
+    # on a board that also has to keep every camera loop fed.
+    max_export_rows: int = 100_000
+
+    # --- Alerts --------------------------------------------------------------
+    # A parked car occupying a slot this long is unusual enough to flag for a
+    # guard to check; tuned per site rather than hardcoded so a loading bay
+    # and a resident garage can use different values.
+    overstay_hours: float = 12.0
+    # Fraction of the volume free below which disk space is "low". Halved for
+    # the escalation to CRITICAL.
+    disk_low_percent: float = 0.10
+    # A percentage alone misfires on a small flash card: 10% of a 4 GB card is
+    # ~400 MB, comfortable, while 10% of a 64 MB card is ~6 MB, already an
+    # emergency. This absolute floor (MiB) catches the small-volume case the
+    # percentage misses; halved for the escalation to CRITICAL, same as above.
+    disk_low_min_free_mb: int = 256
+    # Minimum time between two alerts sharing the same (type, entity) key.
+    # Without this a flapping camera or a disk hovering at the threshold
+    # produces one alert per job tick instead of one alert per incident.
+    alert_cooldown_s: float = 3600.0
 
     # --- Realtime ----------------------------------------------------------
     ws_auth_deadline_s: float = 5.0
     ws_heartbeat_s: float = 20.0
     ws_max_viewers_per_camera: int = 4
+    # Every open stream is a socket, a task and a queue on a board that also
+    # runs the inference loop. Refusing the sixteenth viewer is a better
+    # outcome than serving all of them badly.
+    ws_max_connections_total: int = 16
+    # How stale the cached first frame may be. Comfortably more than a poll
+    # interval, far less than "the last frame anyone saw yesterday" - past
+    # this a new viewer waits for a real frame rather than being shown history
+    # as if it were live.
+    ws_first_frame_max_age_s: float = 30.0
 
     # --- Web ---------------------------------------------------------------
     spa_dist_dir: Path = REPO_ROOT / "frontend" / "dist"

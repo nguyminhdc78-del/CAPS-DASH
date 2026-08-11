@@ -1,0 +1,55 @@
+# Single-service deployment for the Arduino UNO Q (linux/arm64). One
+# container, one process - the reference project's two-server split
+# (scout anti-pattern #1) has no equivalent here on purpose.
+#
+#   cp deploy/caps-dash.env.example .env   # then fill in SECRET_KEY, CORS_ORIGINS
+#   docker compose up -d
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: caps-dash:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Named volume: the database and its WAL sidecars are per-deployment
+      # state that must survive a `docker compose down`/image upgrade.
+      - caps-data:/app/data
+      # Read-only bind mount: the .onnx model is a build artefact from a
+      # developer machine, not something the container ever needs to write.
+      - ./models:/app/models:ro
+    # Sized for sharing a small aarch64 board with the vision pipeline
+    # itself, not benchmarked - see scripts/soak-test.sh and revisit after
+    # a real run records actual RSS on the target hardware.
+    mem_limit: 768m
+    healthcheck:
+      # Same script the image's own HEALTHCHECK instruction runs (see
+      # Dockerfile) - one definition, not two copies that can drift apart.
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    # ONE worker - a correctness requirement (see app_factory.py's runtime
+    # guard and docs/system-architecture.md), restated explicitly here even
+    # though it duplicates the Dockerfile's own CMD, so nobody reading only
+    # this file can "fix" a perceived typo into `--workers 4`.
+    command:
+      [
+        "uvicorn",
+        "caps_dash.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--workers",
+        "1",
+      ]
+
+volumes:
+  caps-data:

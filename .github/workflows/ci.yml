@@ -1,0 +1,140 @@
+name: CI
+
+# One job, one straight line: lint -> types -> backend tests -> frontend
+# checks -> contract/licence guards. Kept as a single job (rather than a
+# lint/test/build matrix) because the whole thing runs in well under the
+# 10-minute budget and a single job is the simplest thing that shows the
+# gate chain in one readable log, top to bottom.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A stale run for the same PR/branch is wasted CI minutes once a new push
+# lands - cancel it rather than let two runs race to report a status.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The single Python version this project targets (pyproject.toml:
+  # requires-python = ">=3.12,<3.14", ruff/mypy target-version py312). A
+  # version matrix would slow CI for no benefit: the deployment target is
+  # one fixed interpreter on one board, not a library supporting a range.
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  ci:
+    name: Lint, types, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend (runtime + dev, never vision-dev)
+        # No `[vision-dev]` extra here on purpose: this is exactly what keeps
+        # the AGPL-3.0 `ultralytics` package out of the environment this job
+        # asserts against below, matching what the production image installs.
+        run: pip install -e ".[dev]"
+
+      - name: ruff
+        run: ruff check backend tests
+
+      - name: mypy
+        run: mypy backend
+
+      - name: pytest with coverage
+        run: pytest --cov=caps_dash --cov-report=xml --cov-report=term-missing
+
+      # coverage.py's [tool.coverage.report] fail_under in pyproject.toml is
+      # one blanket number (80%, the overall-backend bar). The two tighter,
+      # package-specific bars this project actually cares about need their
+      # own scoped runs: coverage.py has no per-package multi-threshold
+      # config, so "one gate per package" means "one pytest invocation per
+      # package". `vision.domain` is scoped to its own test directory (it has
+      # zero dependencies outside the standard library, so nothing else in
+      # the suite can exercise it anyway - confirmed identical against the
+      # full suite). `security` is measured against the FULL suite instead:
+      # its own unit tests alone land at ~80%, but the module is also
+      # exercised heavily by tests/api/ (every authenticated request goes
+      # through `current_user.py`/`rbac.py`), which is real coverage, not
+      # something to discard by scoping it away.
+      - name: Coverage gate - caps_dash.vision.domain must be 100%
+        run: >
+          pytest tests/vision/domain
+          --cov=caps_dash.vision.domain --cov-report=term-missing
+          --cov-fail-under=100 -q
+
+      - name: Coverage gate - caps_dash.security must be >= 90%
+        run: >
+          pytest
+          --cov=caps_dash.security --cov-report=term-missing
+          --cov-fail-under=90 -q
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm run test
+
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage.xml
+          retention-days: 30
+
+      # --- Licence and repo-hygiene guards -------------------------------
+      # AGPL-3.0 `ultralytics` exists only to export a .onnx on a developer
+      # machine (see pyproject.toml's `vision-dev` extra) and must never be
+      # part of a deployed dependency set. This is the CI-side half of that
+      # promise; the Dockerfile install step (no `[vision-dev]`) is the other.
+      - name: Assert ultralytics is not in the installed dependency set
+        run: |
+          if pip freeze | grep -qi '^ultralytics=='; then
+            echo "::error::ultralytics is installed - it is AGPL-3.0 and dev-only (vision-dev extra), never a deployed dependency"
+            exit 1
+          fi
+          echo "ok: ultralytics is not installed"
+
+      # The committed docs/openapi.json is the contract the frontend's
+      # generated types are built from (scripts/generate-api-types.*). A
+      # route or schema change that forgot to regenerate it would otherwise
+      # ship silently out of sync with what the SPA was built against.
+      - name: Assert the OpenAPI contract snapshot is in sync
+        run: |
+          python scripts/dump_openapi_snapshot.py
+          git diff --exit-code -- docs/openapi.json || {
+            echo "::error::docs/openapi.json is stale - run 'python scripts/dump_openapi_snapshot.py' and commit the result";
+            exit 1;
+          }

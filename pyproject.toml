@@ -98,3 +98,31 @@ pythonpath = ["backend", "."]
 addopts = "-q --strict-markers"
 asyncio_mode = "auto"
 filterwarnings = ["error::DeprecationWarning:caps_dash.*"]
+# `--strict-markers` means an unregistered marker fails collection instead of
+# silently doing nothing, so every marker used anywhere in `tests/` must be
+# declared here. Only `e2e` and `worker` are asserted on directly (slow /
+# subprocess-driven tests a developer may want to skip locally with
+# `-m "not e2e"`); `unit` and `integration` exist so the split named in
+# CLAUDE.md's plan is selectable even though most of the suite predates this
+# phase and is not yet retro-tagged with them.
+markers = [
+    "unit: fast, no I/O, no database, no event loop",
+    "integration: exercises the real app/API against a temp database",
+    "worker: drives the camera loop or a live subprocess",
+    "e2e: boots the whole app and walks a full user journey",
+]
+
+[tool.coverage.run]
+source = ["caps_dash"]
+branch = true
+omit = ["backend/caps_dash/db/migrations/*"]
+
+[tool.coverage.report]
+# One blanket number here, deliberately modest: coverage.py's `fail_under` is
+# global, not per-package, so the tighter package-specific bars this project
+# actually cares about (`vision.domain` 100%, `security` >= 90%) are enforced
+# in `.github/workflows/ci.yml` as separate `--cov-fail-under` runs scoped to
+# those packages, where a real per-package gate is possible.
+fail_under = 80
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+

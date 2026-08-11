@@ -1,0 +1,55 @@
+[Unit]
+Description=CAPS-DASH - car-park administration dashboard
+Documentation=https://github.com/<org>/caps-dash
+# The board's clock has no battery-backed RTC (see lifespan.py's clock-suspect
+# warning), so time-dependent things - TLS validation if this ever proxies
+# out, log timestamps - are only meaningful once NTP has run.
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=caps
+Group=caps
+EnvironmentFile=/etc/caps-dash/caps-dash.env
+WorkingDirectory=/opt/caps-dash
+
+# ONE worker is a correctness requirement, not a tuning choice - see
+# docs/system-architecture.md and backend/caps_dash/app_factory.py's runtime
+# guard. Each worker would start its own camera supervisor: duplicate polls
+# of every ESP32-CAM, duplicate inference, vote filters disagreeing about the
+# same slot, and several processes racing to write one SQLite file.
+ExecStart=/opt/caps-dash/.venv/bin/uvicorn caps_dash.main:app --host 127.0.0.1 --port 8000 --workers 1
+
+Restart=on-failure
+RestartSec=5
+
+# `lifespan.py`'s SHUTDOWN_TIMEOUT_S gives running camera loops up to 10s to
+# finish their current tick before being cancelled outright. This is set
+# comfortably above that so systemd's own SIGKILL escalation never races the
+# application's own graceful-shutdown window on a loaded board.
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+# Resource limits sized for sharing a small aarch64 board with the vision
+# pipeline itself, not with a benchmark - adjust after the soak test
+# (scripts/soak-test.sh) records real numbers for this hardware.
+MemoryMax=1G
+CPUQuota=300%
+
+# --- Hardening -------------------------------------------------------------
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# Only these two paths are writable - the database, and its online backups.
+# Everything else the app reads (models/, the SPA build) stays read-only.
+ReadWritePaths=/var/lib/caps-dash /var/backups/caps-dash
+
+[Install]
+WantedBy=multi-user.target

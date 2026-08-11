@@ -1,0 +1,50 @@
+# Keep the build context small and the image free of anything that should
+# come from a volume, an env var, or simply never ship at all.
+
+# Version control / editor
+.git
+.gitignore
+.claude
+.opencode
+.vscode
+.idea
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+.mypy_cache
+.ruff_cache
+.pytest_cache
+htmlcov
+.coverage
+.coverage.*
+*.egg-info
+
+# Node (the `web` build stage does its own `npm ci` from a clean COPY)
+frontend/node_modules
+frontend/dist
+
+# Runtime data and secrets - these come from a volume/env file, never a layer
+data
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example
+
+# Docs, plans, tests - not needed to build or run the image
+docs
+plans
+tests
+*.md
+!README.md
+
+# CI/tooling that has no business inside the image. NOTE: `deploy/` is NOT
+# excluded - the Dockerfile COPYs `deploy/docker-entrypoint.sh` and
+# `deploy/healthcheck.sh` from the build context into the image.
+.github
+scripts
+docker-compose.yml
