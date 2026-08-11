@@ -24,9 +24,10 @@ from caps_dash.realtime.broadcast_hub import BroadcastHub
 from caps_dash.realtime.frame_protocol import decode_frame_message
 from caps_dash.vision.detectors import fake_detector
 from caps_dash.vision.domain import Detection, SlotState
-from caps_dash.workers import inference_runner
+from caps_dash.workers import camera_loop, inference_runner
 from caps_dash.workers.camera_context import CameraContext, build_context
 from caps_dash.workers.camera_loop import run_camera_loop
+from caps_dash.workers.camera_supervisor import CameraSupervisor
 from caps_dash.workers.reload_signals import ReloadSignals
 
 # A slot covering the lower-left quadrant of a 640x480 frame.
@@ -178,6 +179,56 @@ async def test_frames_are_published_to_a_watching_viewer(
     assert message.jpeg.startswith(b"\xff\xd8")
 
 
+async def test_the_published_jpeg_is_the_frame_inference_ran_on(
+    settings, session_factory, camera_id
+) -> None:
+    """The atomic-message guarantee, asserted rather than assumed.
+
+    One message carries the frame and the state describing it. That only holds
+    if the bytes published are the same bytes the detector saw - if a future
+    change ever re-encodes, resizes or re-fetches for the stream, the overlay
+    would be drawn over a different picture than the one it describes, and
+    nothing else in the suite would notice.
+    """
+    hub = BroadcastHub()
+    viewer = hub.subscribe(camera_id)
+
+    context = await _run(settings, session_factory, camera_id, hub, ticks=4)
+
+    message = decode_frame_message(await viewer.get())
+    assert message.jpeg == context.last_jpeg
+    assert (message.header["frame_w"], message.header["frame_h"]) == context.last_frame_size
+
+
+async def test_encoding_happens_once_per_tick_regardless_of_viewer_count(
+    settings, session_factory, camera_id, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fan-out must cost a reference copy per viewer, never an encode.
+
+    Counted against the real loop, not against a helper the test calls itself:
+    five viewers over four ticks is four encodes, or the CPU cost of a stream
+    grows with the number of people watching - which is exactly what this
+    design refuses to do on a single-board host.
+    """
+    hub = BroadcastHub()
+    for _ in range(5):
+        hub.subscribe(camera_id)
+
+    calls = 0
+    real_encode = camera_loop.encode_frame_message
+
+    def counting_encode(header: dict, jpeg: bytes) -> bytes:
+        nonlocal calls
+        calls += 1
+        return real_encode(header, jpeg)
+
+    monkeypatch.setattr(camera_loop, "encode_frame_message", counting_encode)
+
+    await _run(settings, session_factory, camera_id, hub, ticks=4)
+
+    assert calls == 4
+
+
 async def test_nothing_is_published_when_nobody_is_watching(
     settings, session_factory, camera_id
 ) -> None:
@@ -197,3 +248,51 @@ async def test_the_camera_row_records_the_frame_size_it_saw(
         assert camera is not None
         assert (camera.frame_width, camera.frame_height) == (640, 480)
         assert camera.last_seen_at is not None
+
+
+async def test_a_camera_added_after_startup_starts_running(settings, session_factory) -> None:
+    """The reconcile signal raised by `camera_service` has to be acted on.
+
+    Reconciling only at startup would mean a camera added from the dashboard
+    sat there doing nothing until somebody restarted the process - a bug that
+    presents as "the new camera is broken" rather than as a missing watcher.
+    """
+    loop = asyncio.get_running_loop()
+    inference_pool = ThreadPoolExecutor(max_workers=1)
+    db_pool = ThreadPoolExecutor(max_workers=1)
+    signals = ReloadSignals(loop)
+    supervisor = CameraSupervisor(
+        settings=settings,
+        session_factory=session_factory,
+        loop=loop,
+        inference_pool=inference_pool,
+        db_pool=db_pool,
+        hub=BroadcastHub(),
+        reload_signals=signals,
+    )
+
+    try:
+        await supervisor.start()
+        assert supervisor.running_camera_ids == []
+
+        with session_scope(session_factory) as session:
+            session.add(
+                Camera(
+                    code="late-01",
+                    source_type=CameraSourceType.FAKE,
+                    source_url="",
+                    poll_interval_s=0.01,
+                )
+            )
+
+        signals.request_reconcile()
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            if supervisor.running_camera_ids:
+                break
+
+        assert supervisor.running_camera_ids, "the camera added after startup never started"
+    finally:
+        await supervisor.stop(timeout=2.0)
+        inference_pool.shutdown(wait=True)
+        db_pool.shutdown(wait=True)

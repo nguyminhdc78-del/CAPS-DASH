@@ -245,3 +245,4 @@ def test_average_process_time_smooths_a_single_slow_frame() -> None:
     metrics.record_success(process_ms=40.0, tick_ms=100.0)
     metrics.record_success(process_ms=60.0, tick_ms=100.0)
     assert metrics.average_process_ms == pytest.approx(50.0)
+
