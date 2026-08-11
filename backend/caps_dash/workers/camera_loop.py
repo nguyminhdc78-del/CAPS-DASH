@@ -111,6 +111,7 @@ async def run_camera_loop(
 
         tick_ms = (time.perf_counter() - tick_started) * 1000.0
         context.metrics.record_success(process_ms=outcome.process_ms, tick_ms=tick_ms)
+        context.remember_frame(frame.jpeg_bytes, outcome.frame_w, outcome.frame_h)
 
         seq += 1
         if context.hub.has_viewers(context.camera_id):
@@ -119,7 +120,7 @@ async def run_camera_loop(
             context.hub.publish(
                 context.camera_id,
                 encode_frame_message(
-                    context.build_header(outcome, states, seq), frame.jpeg_bytes
+                    context.build_header(outcome, states, seq, fitted), frame.jpeg_bytes
                 ),
             )
 

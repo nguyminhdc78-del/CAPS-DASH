@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
@@ -13,12 +14,15 @@ from sqlalchemy.orm import Session, sessionmaker
 from ..config.settings import Settings
 from ..db.models import Camera, ParkingSlot
 from ..db.session import session_scope
+from ..db.types import utc_now
 from ..errors.exceptions import NotFoundError
 from ..realtime.broadcast_hub import BroadcastHub
+from ..realtime.frame_header import build_frame_header
 from ..vision.domain import Slot, SlotMap, SlotMapFilter, build_filter
 from ..vision.sources.base import FrameSource
 from ..vision.sources.source_factory import build_source
 from .camera_metrics import CameraMetrics
+from .inference_runner import InferenceOutcome
 from .reload_signals import ReloadSignals
 from .state_tracker import StateTracker
 
@@ -62,41 +66,43 @@ class CameraContext:
     state_tracker: StateTracker = field(default_factory=StateTracker)
     metrics: CameraMetrics = field(default_factory=CameraMetrics)
 
+    # The most recent frame, kept so the ROI editor's snapshot endpoint can be
+    # served without a second request to the camera. One JPEG per camera - a
+    # few tens of kilobytes - and it saves the ESP32 a round trip every time an
+    # installer opens the editor.
+    last_jpeg: bytes | None = None
+    last_frame_size: tuple[int, int] = (0, 0)
+    last_frame_at: dt.datetime | None = None
+
     @property
     def camera_id(self) -> int:
         return self.config.id
 
+    def remember_frame(self, jpeg: bytes, width: int, height: int) -> None:
+        self.last_jpeg = jpeg
+        self.last_frame_size = (width, height)
+        self.last_frame_at = utc_now()
+
     def close(self) -> None:
         self.source.close()
 
-    def build_header(self, outcome: Any, states: dict[str, Any], seq: int) -> dict[str, Any]:
-        """The JSON half of a realtime message."""
-        fitted = self.slot_map.fit_to_frame(outcome.frame_w, outcome.frame_h)
-        return {
-            "camera_id": self.config.id,
-            "camera_code": self.config.code,
-            "seq": seq,
-            "frame_w": outcome.frame_w,
-            "frame_h": outcome.frame_h,
-            "process_ms": round(outcome.process_ms, 1),
-            "confidence": round(outcome.confidence, 3),
-            "slots": [
-                {"code": slot.id, "state": str(states.get(slot.id, slot.state)),
-                 "polygon": [[round(x, 1), round(y, 1)] for x, y in slot.polygon]}
-                for slot in fitted.slots
-            ],
-            "detections": [
-                {
-                    "x1": round(d.x1, 1),
-                    "y1": round(d.y1, 1),
-                    "x2": round(d.x2, 1),
-                    "y2": round(d.y2, 1),
-                    "confidence": round(d.confidence, 3),
-                    "label": d.label,
-                }
-                for d in outcome.detections
-            ],
-        }
+    def build_header(
+        self, outcome: InferenceOutcome, states: dict[str, Any], seq: int, fitted: SlotMap
+    ) -> dict[str, Any]:
+        """The JSON half of a realtime message.
+
+        `fitted` is passed in rather than recomputed: the loop has already
+        scaled the map to this frame to run assignment against it, and fitting
+        twice per tick is pure waste on a board with no CPU to spare.
+        """
+        return build_frame_header(
+            camera_id=self.config.id,
+            camera_code=self.config.code,
+            seq=seq,
+            outcome=outcome,
+            states=states,
+            fitted=fitted,
+        )
 
 
 def load_camera_config(session: Session, camera_id: int) -> CameraConfig:

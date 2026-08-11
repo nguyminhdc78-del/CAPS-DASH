@@ -52,13 +52,49 @@ class CameraSupervisor:
         self._tasks: dict[int, asyncio.Task[None]] = {}
         self._contexts: dict[int, CameraContext] = {}
         self._stop = asyncio.Event()
+        self._reconcile_watcher: asyncio.Task[None] | None = None
 
     # --- lifecycle -----------------------------------------------------------
 
     async def start(self) -> None:
         self._stop.clear()
         await self.reconcile()
+        self._reconcile_watcher = self._loop.create_task(
+            self._watch_for_reconcile(), name="camera-reconcile-watcher"
+        )
         logger.info("camera_supervisor_started", cameras=len(self._tasks))
+
+    async def _watch_for_reconcile(self) -> None:
+        """Act on reconcile requests raised while the app is running.
+
+        Without this, `reconcile()` would run exactly once at startup and the
+        signal `camera_service` raises after every create, delete or
+        enable/disable would sit set and unread - so a camera added from the
+        dashboard would never start polling until someone restarted the
+        process. Reconciling is idempotent, so a spurious wake-up is harmless.
+        """
+        event = self._reload_signals.reconcile_event
+        while not self._stop.is_set():
+            waiter = asyncio.ensure_future(event.wait())
+            stopper = asyncio.ensure_future(self._stop.wait())
+            try:
+                await asyncio.wait({waiter, stopper}, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                for pending in (waiter, stopper):
+                    if not pending.done():
+                        pending.cancel()
+
+            if self._stop.is_set():
+                return
+            if not self._reload_signals.take_reconcile():
+                continue
+            try:
+                await self.reconcile()
+                logger.info("camera_supervisor_reconciled", cameras=len(self._tasks))
+            except Exception:
+                # A broken camera row must not kill the watcher; the next
+                # signal has to still be acted on.
+                logger.exception("camera_reconcile_failed")
 
     async def reconcile(self) -> None:
         """Match running tasks to the enabled cameras in the database."""
@@ -72,6 +108,13 @@ class CameraSupervisor:
 
     async def stop(self, timeout: float = 10.0) -> None:
         self._stop.set()
+
+        watcher, self._reconcile_watcher = self._reconcile_watcher, None
+        if watcher is not None:
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
+
         tasks = list(self._tasks.values())
         if tasks:
             # Give the loops a chance to finish the tick they are on; cancel
@@ -188,7 +231,11 @@ class CameraSupervisor:
         """
         old.close()
         fresh = await asyncio.to_thread(self._build, old.camera_id)
-        # Metrics survive a reload - they describe the camera, not the config.
+        # Metrics and the cached still survive a reload - they describe the
+        # camera, not the configuration that was just replaced.
         fresh.metrics = old.metrics
+        fresh.last_jpeg = old.last_jpeg
+        fresh.last_frame_size = old.last_frame_size
+        fresh.last_frame_at = old.last_frame_at
         self._contexts[old.camera_id] = fresh
         return fresh
