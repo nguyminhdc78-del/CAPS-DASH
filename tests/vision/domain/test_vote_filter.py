@@ -93,6 +93,25 @@ def test_map_filter_reports_unknown_for_a_slot_never_seen_occupied_before_warmup
     assert not map_filter.is_warmed_up
 
 
+def test_map_filter_slot_ids_lists_every_slot() -> None:
+    map_filter = build_filter(["A1", "A2"], window=2, threshold=1)
+    assert sorted(map_filter.slot_ids) == ["A1", "A2"]
+
+
+def test_map_filter_reset_forgets_every_slots_votes() -> None:
+    map_filter = build_filter(["A1", "A2"], window=2, threshold=1)
+    for _ in range(2):
+        map_filter.update({"A1", "A2"})
+    assert map_filter.is_warmed_up
+
+    map_filter.reset()
+
+    assert not map_filter.is_warmed_up
+    states = map_filter.update(set())
+    assert states["A1"] is SlotState.UNKNOWN
+    assert states["A2"] is SlotState.UNKNOWN
+
+
 def test_build_filter_returns_a_fresh_instance_every_time() -> None:
     """Hot reload depends on this: a reused filter would carry stale votes."""
     first = build_filter(["A1"], window=2, threshold=2)

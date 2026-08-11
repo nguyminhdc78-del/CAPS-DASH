@@ -82,6 +82,13 @@ def test_two_cars_in_one_slot_is_reported() -> None:
     assert counts == {"A1": 2}
 
 
+def test_count_ignores_a_detection_that_lands_in_no_slot() -> None:
+    """An unassigned vehicle must not raise and must not be counted anywhere."""
+    slot_map = SlotMap(slots=[_rect("A1", 0, 0, 100, 100)], width=200, height=200)
+    counts = count_detections_per_slot([_car(500, 500, 560, 580)], slot_map)
+    assert counts == {"A1": 0}
+
+
 def test_count_reports_zero_for_empty_slots() -> None:
     slot_map = SlotMap(
         slots=[_rect("A1", 0, 0, 100, 100), _rect("A2", 100, 0, 200, 100)],
