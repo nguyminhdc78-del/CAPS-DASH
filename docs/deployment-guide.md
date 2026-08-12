@@ -502,35 +502,43 @@ produced a strongly green-cast picture on this installation.
 Measured 2026-08-12 against an action camera (640x480 HEVC, 30 fps) joined to
 the same hotspot as the board.
 
-**The source connects, takes one frame and disconnects.** That looks wasteful
-and is not. Three designs were tried:
+**The source holds ONE session open and drains it on a thread.** Four designs
+were tried; the discarded ones all look reasonable until measured:
 
 | design | result |
 |---|---|
 | one frame per worker tick, session held open | 5.4 s late after 6 s; 28.6 s late after 30 s |
-| reader thread draining continuously | 1-8 fps of the 30 sent; still reached 40 s late |
-| connect, grab one frame, disconnect | bounded at one connect (~3.1 s here) |
+| reader thread draining continuously | correct on a healthy link; 40 s late on a broken one |
+| connect, grab one frame, disconnect | lag bounded, but killed the camera - see below |
+| **one session, drained, resynced on lag** | what ships |
 
 An RTSP capture yields frames oldest-first and never skips, so a consumer
 slower than the camera leaves the rest queued and the lag grows a second per
-second, without bound. Draining continuously fixes that only if the network
-can carry the stream. This one could not:
+second, without bound. A draining thread fixes that whenever the link can
+carry the stream.
+
+**Do not open a session per frame.** It bounds lag by construction - a new
+session starts at the live edge - and it worked, at about 3.1 s a frame. It
+also opened roughly twenty RTSP sessions a minute, and the reference camera's
+session table could not take it. FFMPEG eventually reported
 
 ```
-ping camera:  406-1052 ms round trip, 20% packet loss
-throughput:   0.13 Mbit/s actually flowing
-board load:   0.83 - not short of CPU
+method PLAY failed: 454 Session Not Found
 ```
 
-TCP collapses under that loss, the camera keeps encoding regardless, and the
-backlog sits on ITS side where draining cannot reach it. A new RTSP session
-starts at the live edge, so its first frame is current by construction - there
-is no queue to inherit because no session is old enough to have built one.
+the server handing out a session id and immediately forgetting it. A raw
+DESCRIBE still returned 200 OK at the time and ping was 24 ms with no loss, so
+the camera was reachable and talking - it had simply been worn down. Recovery
+needs the camera power-cycled; leaving and re-entering its streaming screen
+was not enough.
 
-**If the link is healthy, the draining design is better.** `rtsp_stream_lag`
-in the logs reports `decode_fps` and `lag_growth_s`; a growth near zero means
-the link can sustain a held-open stream, and
-`vision/sources/rtsp_stream_diagnostics.py` exists to tell you that.
+**A bad link is handled, not designed around.** This one measured 406-1052 ms
+round trip with 20% packet loss and 0.13 Mbit/s flowing at one point, and
+24 ms with no loss an hour later - transient, not a property of the site. When
+`StreamLagTracker` reports the picture more than `RESYNC_LAG_S` (3 s) behind,
+the session is rebuilt once, which puts it back at the live edge without
+returning to a session per frame. `rtsp_stream_lag` logs `decode_fps` and
+`lag_growth_s` so the link's condition is visible rather than guessed at.
 
 **Set `MIN_INFERENCE_INTERVAL_S` on an RTSP camera.** `poll_interval_s` sets
 two rates at once - how often the detector may look, and how often a frame
