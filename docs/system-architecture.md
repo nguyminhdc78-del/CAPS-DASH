@@ -6,16 +6,18 @@ Physical deployment, process model, concurrency, data flow, and the WebSocket fr
 
 ```
 ┌─────────────────┐     ┌──────────────────────────────────────┐
-│  ESP32-CAM      │────▶│  CAPS-DASH Server                    │
+│  MaixCam        │────▶│  CAPS-DASH Server                    │
 │  (Ceiling)      │     │  (Linux arm64, one process)          │
-│  JPEG over HTTP │     │                                      │
+│  GET /snapshot  │     │                                      │
+│  one JPEG, 2.0s │     │                                      │
 └─────────────────┘     │  ┌─────────────────────────────────┐│
                         │  │ Camera Loop (asyncio task)      ││
-                        │  │ ├─ Poll ESP32 (3s interval)     ││
-                        │  │ ├─ Run YOLO (inference pool)    ││
-                        │  │ ├─ Vote filter (N-of-M)         ││
-                        │  │ ├─ Write slot state (db_pool)   ││
-                        │  │ └─ Publish frame (WebSocket hub) ││
+                        │  │ ├─ Read frame (poll interval)   ││
+                        │  │ ├─ Publish frame (WS hub) ◀─ now ││
+                        │  │ └─ Start detection, do NOT wait ││
+                        │  │      ├─ Run YOLO (inference pool)│
+                        │  │      ├─ Vote filter (N-of-M)    ││
+                        │  │      └─ Write slot state (db)   ││
                         │  └─────────────────────────────────┘│
                         │                                      │
                         │  ┌─────────────────────────────────┐│
@@ -42,6 +44,30 @@ Physical deployment, process model, concurrency, data flow, and the WebSocket fr
                         │  (Dashboard SPA)     │
                         └──────────────────────┘
 ```
+
+**The primary path is snapshot polling.** The camera holds its sensor open and
+caches the newest encoded frame; the backend pulls one JPEG per tick over plain
+HTTP through `Esp32CamHttpSource`, decodes it, publishes frame and state to
+viewers as **one binary message** so overlays stay aligned with the picture
+they describe, and starts a detection without waiting for it.
+
+RTSP remains a supported `source_type` - `CameraSourceType.RTSP`,
+`RtspStreamSource` and its tests are all still here, and an operator with an IP
+camera should use it. It is no longer the shape the defaults are tuned for. The
+reason is CPU and simplicity, not a failure: an in-process four-thread FFMPEG
+HEVC decoder cost 325% of 400% available CPU. See *Why RTSP is not the primary
+path* in `deployment-guide.md`, which also records why the lag figures there
+are specific to the link they were measured on.
+
+**Camera loops start staggered.** Every camera's tick sleeps the remainder of
+its own interval from its own start, so N loops spawned in the same millisecond
+keep firing together forever and hand N inferences to a one-worker pool at
+once - the last one waits (N-1) detections for a result describing a frame that
+is already several ticks old. `CameraSupervisor.reconcile()` therefore spreads
+first ticks across the interval (`camera_start_stagger.py`): three cameras at
+2.0 s start at +0.00, +0.67, +1.33. The offset is applied once, before the
+supervise retry loop, so a camera that crashes and backs off does not drift
+further from its slot on every restart.
 
 ## Process Model (Single Uvicorn Worker)
 
@@ -271,6 +297,37 @@ The skip rate is a property of the *scene*, not of the code: a view with
 constant through-traffic approaches 100% inferred, and the pessimistic figure
 becomes the real one. See `deployment-guide.md` for the arithmetic and for why
 the camera's exposure must be locked for any of it to hold.
+
+**The live view is not behind any of this.** A tick reads a frame, publishes
+it, and *starts* a detection without waiting for it; the result is applied
+whenever it lands, and the frame it describes has usually been on screen for a
+while by then. Publishing used to sit after the inference await, which put a
+whole detection into the age of every frame a viewer saw - and only on the
+ticks where the picture had changed, so the view was smooth while nothing
+happened and stalled the moment a car moved. At most one detection runs per
+camera at a time; a tick that finds the detector busy just publishes and moves
+on. The overlay therefore trails the picture by up to one detection, which the
+frame header marks as `inference_skipped`.
+
+### Two settings with similar names
+
+This has already caused one wrong conclusion, so it is worth five lines.
+
+| | `INFERENCE_POOL_SIZE` | `INFERENCE_THREADS` |
+|---|---|---|
+| Means | How many inferences run **at once** | Threads used **inside one** inference |
+| Wired to | `ThreadPoolExecutor(max_workers=...)` | `intra_op_num_threads` on the ONNX session (`inter_op` pinned to 1) |
+| Default | **1** | 2 |
+| Change it? | **Never.** One detector per worker thread, one model in RAM - a correctness constraint | Yes, on measurement |
+
+Raising `INFERENCE_THREADS` does **not** let two inferences run in parallel. It
+makes each one finish sooner, which shrinks the *serialized* worst case - which
+is the thing that has to fit the tick. Three cameras at a median 616 ms is
+1.85 s against a 2.0 s tick.
+
+If that budget does not fit, the decided response is to **raise the tick** (and
+accept that the live view slows with it, since the tick is also the frame
+rate), not to raise `INFERENCE_POOL_SIZE`.
 
 - **Viewers per camera**: 4 max (tunable in settings).
 - **Total concurrent viewers**: 16 max.

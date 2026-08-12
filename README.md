@@ -9,8 +9,8 @@ Qualcomm Hack Challenge 2026 · Nhóm Mặt Trời Nhỏ
 ## What It Is
 
 ```
-ESP32-CAM (ceiling)
-    ↓ JPEG over HTTP
+MaixCam (ceiling)
+    ↓ one JPEG per GET /snapshot, polled every 2 s
 CAPS-DASH Server
     ├─ YOLO v8 inference (onnxruntime)
     ├─ N-of-M vote filter (suppress noise)
@@ -99,7 +99,7 @@ Until the vote filter has seen a full window of frames, the system does not know
 
 One Linux process (arm64 for Arduino UNO Q) runs:
 - **Event loop** (async): Manages N concurrent camera tasks + WebSocket subscribers.
-- **Camera task** (per enabled camera): Polls ESP32 over HTTP (3 s interval), downloads JPEG, wakes inference pool.
+- **Camera task** (per enabled camera): Polls the camera over HTTP (2 s interval), downloads one JPEG, publishes it, then starts a detection without waiting for it. Cameras start staggered across the interval so they do not all queue on the single inference worker at once. RTSP is still supported for IP cameras.
 - **Inference pool** (1 worker, thread): Runs YOLO v8 on CPU-bound ONNX session; blocks event loop briefly.
 - **DB-write pool** (1 worker, thread): Serializes all SQLite writes (only one connection anyway).
 - **REST API** (sync handlers): Read/write via SQLAlchemy ORM; never async (lets event loop time-slice).
@@ -323,6 +323,13 @@ See [`docs/deployment-guide.md`](docs/deployment-guide.md) for the full referenc
 poll supports roughly three cameras with headroom; six needs a 5 s poll. See
 `docs/deployment-guide.md`.
 
+**The live view is 1 frame every 2 seconds** on a polled camera. That is
+intended, not a fault: the poll interval is both the live-view frame rate and
+the inference cadence, and 2 s is what the camera and the detector budget
+together support. Three cameras × 616 ms is 1.85 s against a 2.0 s tick — tight
+enough that if a measurement on the board shows it does not fit, the response
+is to *raise* the tick to 2.5–3.0 s, which slows the live view with it.
+
 No end-to-end soak test has been run, and no accuracy figure has been measured.
 
 **Limits**:
@@ -350,7 +357,8 @@ All figures to be recorded after soak test (phase 14, step 13).
 - Port 8000 in use? `ss -tlnp | grep 8000`.
 
 ### Camera offline
-- Network reachable? `curl http://<camera-ip>/capture`.
+- Network reachable? `curl http://<camera-ip>:8080/snapshot` (a MaixCam answers
+  `503` rather than a stale frame if its capture thread has stopped).
 - Source URL correct in the UI?
 - Check camera `last_error` field.
 

@@ -11,13 +11,26 @@ Module map with originating phase. All Python packages follow `snake_case`; all 
 | `errors/` | Error codes (never renamed or reused), exception hierarchy, response envelope | 01 |
 | `db/` | SQLAlchemy models (User, Camera, Slot, History, Alert, AuditLog), migrations (Alembic), session lifecycle | 02 |
 | `domain/` | Pure Python geometry, vote filter, state machine — no third-party imports | 04 |
-| `vision/` | Detector backends (ONNX, ultralytics, fake), frame sources (ESP32, folder, video, fake) | 05 |
+| `vision/` | Detector backends (ONNX, ultralytics, fake), frame sources (HTTP snapshot, MJPEG stream, RTSP, folder, video, fake) | 05 |
 | `security/` | Auth (JWT, refresh tokens, per-device sessions), RBAC, rate limiting | 03 |
 | `services/` | Business logic: camera, slot, user, audit, history, stats, alert, system operations | 07 |
 | `api/` | FastAPI routers (34 endpoints), request/response schemas, OpenAPI spec generation | 07 |
 | `realtime/` | WebSocket hub, framing (`[len][header][JPEG]`), authentication, heartbeat | 08 |
 | `web/` | SPA static mount at `/` | 01 |
 | `workers/` | Camera supervisor, loop runtime, hot reload for polygon changes | 06 |
+
+### `workers/` — the per-tick split
+
+| Module | Responsibility |
+|---|---|
+| `camera_supervisor.py` | One asyncio task per enabled camera; restart with backoff; reconcile against the DB |
+| `camera_start_stagger.py` | Pure arithmetic: how long each camera waits before its first tick, so N loops do not fire together |
+| `camera_loop.py` | The tick — read, publish, decide, start a detection without awaiting it |
+| `frame_publisher.py` | Encodes frame + state as one binary message and hands it to the hub |
+| `inference_scheduler.py` | At most one in-flight detection per camera; invalidates results across a config reload |
+| `inference_outcome_applier.py` | Applies a detection result once it lands: vote filter, state diff, DB write |
+| `camera_tick_policy.py` | The change gate and the health-touch interval |
+| `camera_metrics.py` | Per-camera counters; `average_process_ms` is averaged over detector runs, not ticks |
 | `jobs/` | Background: aggregation, overstay/disk alerts, retention purge, rate-limit sweep | 13 |
 | `cli/` | CLI: `serve` (with reload flag), `migrate` (runs at deploy, never at startup) | 01 |
 

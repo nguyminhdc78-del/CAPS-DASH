@@ -98,7 +98,10 @@ this list has been exercised against real camera hardware.
 
 ### Hardware
 - **Deployment target**: Arduino UNO Q (QRB2210 SoC, aarch64 Linux, ~2 GB RAM, ~32 GB flash).
-- **Network**: WiFi-connected ESP32-CAM modules inside the facility; JPEG over HTTP.
+- **Network**: A camera serving one JPEG per HTTP request. The reference
+  installation is a MaixCam on WiFi, polled every 2.0 s; a
+  WiFi ESP32-CAM satisfies the same contract and is still supported, as is an
+  RTSP IP camera.
 - **Scale**: Designed for a demo-scale site of 1-6 cameras. No load test has
   been run, on simulated sources or real ones.
 
@@ -117,8 +120,8 @@ this list has been exercised against real camera hardware.
 ## Architecture Summary
 
 ```
-┌─ ESP32-CAM (ceiling)
-│      ↓ JPEG over HTTP
+┌─ MaixCam (ceiling)
+│      ↓ one JPEG per GET /snapshot, polled every 2.0 s
 │ ┌──────────────────────────────┐
 │ │   CAPS-DASH Server           │
 │ │  (one uvicorn worker)        │
