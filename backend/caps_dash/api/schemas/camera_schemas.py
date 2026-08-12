@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -17,6 +18,7 @@ from .polygon_schemas import PolygonModel
 __all__ = [
     "CameraHealth",
     "CameraResponse",
+    "CameraSettingsResponse",
     "CameraWithHealth",
     "ConnectionTestRequest",
     "ConnectionTestResponse",
@@ -26,6 +28,7 @@ __all__ = [
     "SlotMapRequest",
     "SlotMapResponse",
     "UpdateCameraRequest",
+    "UpdateCameraSettingsRequest",
     "sanitize_source_url",
 ]
 
@@ -151,6 +154,59 @@ class ConnectionTestResponse(BaseModel):
     def _redact_error(cls, value: str) -> str:
         """The probe URL comes straight from the caller, credentials and all."""
         return redact_credentials(value)
+
+
+class UpdateCameraSettingsRequest(BaseModel):
+    """Sensor settings, all optional - only what is sent gets changed.
+
+    `lock_exposure` is a convenience that expands to three separate sensor
+    flags (`aec`, `agc`, `awb`). It exists because those three together are
+    what makes the change gate usable: left on automatic the sensor hunts and
+    the whole frame shifts brightness between shots, which reads as motion.
+    Nobody should have to remember that "lock the exposure" means three
+    different flags in the driver.
+    """
+
+    brightness: int | None = Field(default=None, ge=-2, le=2)
+    contrast: int | None = Field(default=None, ge=-2, le=2)
+    saturation: int | None = Field(default=None, ge=-2, le=2)
+    quality: int | None = Field(default=None, ge=4, le=63, description="Lower is better")
+    framesize: int | None = Field(default=None, ge=0, le=13)
+    aec: int | None = Field(default=None, ge=0, le=1, description="Auto exposure")
+    agc: int | None = Field(default=None, ge=0, le=1, description="Auto gain")
+    awb: int | None = Field(default=None, ge=0, le=1, description="Auto white balance")
+    aec_value: int | None = Field(default=None, ge=0, le=1200)
+    agc_gain: int | None = Field(default=None, ge=0, le=30)
+    hmirror: int | None = Field(default=None, ge=0, le=1)
+    vflip: int | None = Field(default=None, ge=0, le=1)
+    led: int | None = Field(default=None, ge=0, le=1, description="Flash LED")
+    lock_exposure: bool | None = Field(
+        default=None, description="Turn aec, agc and awb off together"
+    )
+
+    def to_changes(self) -> dict[str, int]:
+        """Flatten to the flat name->value map the firmware understands."""
+        changes = {
+            name: value
+            for name, value in self.model_dump(exclude={"lock_exposure"}).items()
+            if value is not None
+        }
+        if self.lock_exposure is not None:
+            locked = 0 if self.lock_exposure else 1
+            # Explicit flags win: someone who sends both meant the specific one.
+            for flag in ("aec", "agc", "awb"):
+                changes.setdefault(flag, locked)
+        return changes
+
+
+class CameraSettingsResponse(BaseModel):
+    camera_id: int
+    # Whatever the firmware reports, passed through rather than modelled
+    # field by field: the set grows with the sensor driver, and a strict model
+    # here would reject a camera that knows one setting more than this schema.
+    settings: dict[str, Any]
+    # Present only on a write: which changes the device accepted.
+    applied: dict[str, bool] | None = None
 
 
 class SlotMapEntry(BaseModel):

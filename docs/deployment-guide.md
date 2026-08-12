@@ -408,27 +408,41 @@ Available providers on this SoC are `AzureExecutionProvider` and
 `CPUExecutionProvider` - there is no NPU path, as predicted in
 `models/README.md`.
 
-**This bounds camera count, and it bounds it lower than the 1-6 design
-target.** Inference is serialised through one worker (`INFERENCE_POOL_SIZE=1`,
-one model in memory - deliberate, not a default). At the default 3 s poll:
+**Inference cost alone does NOT bound camera count, because most frames never
+reach the detector.** Parked cars do not move, so the change gate
+(`vision/frame_change_gate.py`) skips inference on frames identical to the
+last one it looked at. Measured on the reference installation with a settled,
+exposure-locked camera: **11% of frames were inferred**, the rest cost 2.7 ms
+each to compare and skip.
+
+The arithmetic that matters is therefore per-camera *average* cost, not
+per-tick worst case:
 
 ```
-budget per 3 s window   3000 ms
-cost per camera tick   ~ 616 ms
-max cameras            ~ 4.8, before the API, SQLite and the SPA get any CPU
+inference when it runs      ~ 616 ms   (fastest 502, slowest 1440)
+fraction of frames inferred    ~ 11%   (static car park, exposure locked)
+average cost per frame       ~  70 ms  inference + 2.7 ms gate + ~70 ms decode
 ```
+
+Two caveats that decide whether that 11% holds:
+
+- **Lock the camera's exposure** (see below). Unlocked, the measured skip rate
+  collapses and inference fires on most frames - which is what produces the
+  pessimistic "roughly five cameras" figure this section used to quote.
+- **A busy site infers more.** 11% is a car park where nothing moves between
+  arrivals. A thoroughfare with constant foot traffic approaches 100%, and
+  then inference really is the bound: `3000 ms / 616 ms` is about five
+  cameras at a 3 s poll, before the API, SQLite and the SPA get any CPU.
 
 Practical guidance:
 
-- **1-3 cameras**: fine at `CAMERA_POLL_INTERVAL_S=3`, with headroom.
-- **4-6 cameras**: raise the poll interval to 5 s or more. Six cameras need
-  ~3.7 s of inference per round; at a 3 s poll the loops fall permanently
-  behind and slot states go stale without anything reporting an error.
-- **More than 6**: not this hardware, at this input size.
-
-The 1440 ms slowest run matters as much as the median: a tick occasionally
-takes more than twice the typical time, so leave slack rather than tuning the
-poll interval to the median.
+- Size for the busy case if the view has through-traffic, and for the skip
+  rate if it does not. Watch `process_ms` on `/api/cameras` and the
+  `inference_skipped` flag in the WebSocket header to see which you have.
+- The 1440 ms slowest run matters as much as the median: a tick occasionally
+  takes more than twice the typical time, so leave slack rather than tuning
+  the poll interval to the median.
+- More than six cameras is untested on this hardware at this input size.
 
 ### ESP32-CAM frame rate - measured
 

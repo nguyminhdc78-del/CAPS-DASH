@@ -15,6 +15,7 @@ from ..errors.exceptions import NotFoundError
 from .routes.alert_routes import router as alert_router
 from .routes.audit_routes import router as audit_router
 from .routes.auth_routes import router as auth_router
+from .routes.camera_control_routes import router as camera_control_router
 from .routes.camera_diagnostics_routes import router as camera_diagnostics_router
 from .routes.camera_routes import router as camera_router
 from .routes.camera_slot_map_routes import router as camera_slot_map_router
@@ -38,6 +39,7 @@ api_router.include_router(slot_router)
 # `/cameras/{camera_id}` route registered ahead of it would claim that path
 # and answer 422 instead.
 api_router.include_router(camera_diagnostics_router)
+api_router.include_router(camera_control_router)
 api_router.include_router(camera_slot_map_router)
 api_router.include_router(camera_router)
 api_router.include_router(history_router)

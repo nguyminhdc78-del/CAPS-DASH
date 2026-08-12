@@ -261,11 +261,16 @@ If a camera crashes (network timeout, malformed JPEG, detector crash):
 616 ms per frame (fastest 502, slowest 1440) for YOLO26-nano at 640x640 on the
 UNO Q's four aarch64 cores, via onnxruntime 1.28.0 on the CPU provider.
 
-Inference is serialised through one worker, so at the default 3 s poll the
-budget is ~4.8 cameras before the API, SQLite and the SPA get any CPU at all.
-The 1-6 camera design target therefore holds only if the poll interval is
-raised to 5 s or more beyond three cameras. See `deployment-guide.md` for the
-arithmetic and the per-count guidance.
+Inference is serialised through one worker, but the change gate keeps most
+frames away from it: measured at **11% of frames inferred** on a static,
+exposure-locked car park, with the other 89% costing 2.7 ms to compare and
+skip. That is what makes the 1-6 camera target reachable - on inference cost
+alone it would be about five cameras at a 3 s poll.
+
+The skip rate is a property of the *scene*, not of the code: a view with
+constant through-traffic approaches 100% inferred, and the pessimistic figure
+becomes the real one. See `deployment-guide.md` for the arithmetic and for why
+the camera's exposure must be locked for any of it to hold.
 
 - **Viewers per camera**: 4 max (tunable in settings).
 - **Total concurrent viewers**: 16 max.
