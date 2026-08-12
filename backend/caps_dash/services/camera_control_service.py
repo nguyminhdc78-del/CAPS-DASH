@@ -63,10 +63,16 @@ SETTING_RANGES: dict[str, tuple[int, int]] = {
     "led": (0, 1),
 }
 
-# Applied together by `lock_exposure`. Three separate calls to the firmware,
-# one operator action - nobody should have to remember that "lock the
-# exposure" means three different sensor flags.
-EXPOSURE_LOCK = {"aec": 0, "agc": 0, "awb": 0}
+# Applied together by `lock_exposure`. Two separate calls to the firmware, one
+# operator action - nobody should have to remember that "lock the exposure"
+# means two different sensor flags.
+#
+# White balance is deliberately NOT in here. Measured on the reference camera:
+# locking `awb` too moves frame-to-frame noise from 1.46 to 1.34 - nothing,
+# against a threshold of 8 - while costing colour accuracy, and the detector
+# was trained on normally-coloured images. `aec` and `agc` are what actually
+# hunt.
+EXPOSURE_LOCK = {"aec": 0, "agc": 0}
 
 
 @dataclass(frozen=True, slots=True)

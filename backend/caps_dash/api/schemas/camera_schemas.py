@@ -159,12 +159,13 @@ class ConnectionTestResponse(BaseModel):
 class UpdateCameraSettingsRequest(BaseModel):
     """Sensor settings, all optional - only what is sent gets changed.
 
-    `lock_exposure` is a convenience that expands to three separate sensor
-    flags (`aec`, `agc`, `awb`). It exists because those three together are
-    what makes the change gate usable: left on automatic the sensor hunts and
-    the whole frame shifts brightness between shots, which reads as motion.
-    Nobody should have to remember that "lock the exposure" means three
-    different flags in the driver.
+    `lock_exposure` expands to `aec` and `agc` together - the two that make
+    the change gate usable. Left automatic they hunt, the whole frame shifts
+    brightness between shots, and that reads as motion.
+
+    White balance is deliberately excluded. Measured, locking it too changes
+    noise by 0.1 against a threshold of 8, while costing colour accuracy on a
+    detector trained against normally-coloured images.
     """
 
     brightness: int | None = Field(default=None, ge=-2, le=2)
@@ -194,7 +195,7 @@ class UpdateCameraSettingsRequest(BaseModel):
         if self.lock_exposure is not None:
             locked = 0 if self.lock_exposure else 1
             # Explicit flags win: someone who sends both meant the specific one.
-            for flag in ("aec", "agc", "awb"):
+            for flag in ("aec", "agc"):
                 changes.setdefault(flag, locked)
         return changes
 

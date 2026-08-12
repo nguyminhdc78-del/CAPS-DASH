@@ -25,9 +25,14 @@ dependencies = [
     "argon2-cffi>=25.1,<26",
     "httpx>=0.28,<0.29",
     "python-multipart>=0.0.20",
-    "numpy>=2.5,<3",
+    # Floors set to what the target board actually runs, not to whatever was
+    # newest at scaffold time. The Arduino UNO Q ships numpy 2.2.4 and OpenCV
+    # 4.10 system-wide, and building newer ones on aarch64 costs an hour for
+    # no feature this project uses. A floor above the tested version would
+    # mean the documented install pulls something nobody has ever run here.
+    "numpy>=2.2,<3",
     "onnxruntime>=1.28,<2",
-    "opencv-python-headless>=4.12,<5",
+    "opencv-python-headless>=4.10,<5",
 ]
 
 [project.optional-dependencies]

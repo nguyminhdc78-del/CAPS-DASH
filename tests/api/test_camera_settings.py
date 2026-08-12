@@ -75,14 +75,18 @@ def test_reading_settings_reports_what_the_device_says(client: TestClient, guard
     assert response.json()["camera_id"] == 1
 
 
-def test_lock_exposure_expands_to_three_sensor_flags(
+def test_lock_exposure_expands_to_the_two_flags_that_hunt(
     client: TestClient, admin, camera, device
 ):
-    """`aec`, `agc` and `awb` are one operator decision, three driver flags.
+    """`aec` and `agc` are one operator decision, two driver flags.
 
-    Left on automatic the sensor hunts and the whole frame shifts brightness
-    between shots, which the change gate reads as motion - so this shorthand
-    is the difference between YOLO running on 11% of frames and on all of them.
+    Left on automatic they hunt and the whole frame shifts brightness between
+    shots, which the change gate reads as motion - so this shorthand is the
+    difference between YOLO running on 11% of frames and on all of them.
+
+    White balance is deliberately NOT locked: measured, locking it too moves
+    noise by 0.1 against a threshold of 8, while costing colour accuracy on a
+    detector trained against normally-coloured images.
     """
     response = client.patch(
         "/api/cameras/1/settings",
@@ -91,7 +95,9 @@ def test_lock_exposure_expands_to_three_sensor_flags(
     )
 
     assert response.status_code == 200
-    assert {call["var"]: call["val"] for call in device} == {"aec": "0", "agc": "0", "awb": "0"}
+    applied = {call["var"]: call["val"] for call in device}
+    assert applied == {"aec": "0", "agc": "0"}
+    assert "awb" not in applied
 
 
 def test_an_explicit_flag_wins_over_the_shorthand(client: TestClient, admin, camera, device):
@@ -99,10 +105,10 @@ def test_an_explicit_flag_wins_over_the_shorthand(client: TestClient, admin, cam
     client.patch(
         "/api/cameras/1/settings",
         headers=auth_headers(client, "boss"),
-        json={"lock_exposure": True, "awb": 1},
+        json={"lock_exposure": True, "aec": 1},
     )
 
-    assert {call["var"]: call["val"] for call in device}["awb"] == "1"
+    assert {call["var"]: call["val"] for call in device}["aec"] == "1"
 
 
 def test_an_out_of_range_value_is_rejected_before_the_device_is_touched(
@@ -176,12 +182,7 @@ def test_settings_are_remembered_for_the_next_restart(
     )
 
     db.refresh(camera)
-    assert camera.sensor_settings_json == {
-        "brightness": 1,
-        "aec": 0,
-        "agc": 0,
-        "awb": 0,
-    }
+    assert camera.sensor_settings_json == {"brightness": 1, "aec": 0, "agc": 0}
 
 
 def test_remembering_merges_rather_than_replaces(

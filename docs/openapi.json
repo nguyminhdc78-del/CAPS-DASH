@@ -2001,7 +2001,7 @@
         "type": "object"
       },
       "UpdateCameraSettingsRequest": {
-        "description": "Sensor settings, all optional - only what is sent gets changed.\n\n`lock_exposure` is a convenience that expands to three separate sensor\nflags (`aec`, `agc`, `awb`). It exists because those three together are\nwhat makes the change gate usable: left on automatic the sensor hunts and\nthe whole frame shifts brightness between shots, which reads as motion.\nNobody should have to remember that \"lock the exposure\" means three\ndifferent flags in the driver.",
+        "description": "Sensor settings, all optional - only what is sent gets changed.\n\n`lock_exposure` expands to `aec` and `agc` together - the two that make\nthe change gate usable. Left automatic they hunt, the whole frame shifts\nbrightness between shots, and that reads as motion.\n\nWhite balance is deliberately excluded. Measured, locking it too changes\nnoise by 0.1 against a threshold of 8, while costing colour accuracy on a\ndetector trained against normally-coloured images.",
         "properties": {
           "aec": {
             "anyOf": [
