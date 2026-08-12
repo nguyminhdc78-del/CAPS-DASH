@@ -55,6 +55,7 @@ async def run_camera_loop(
     # detector did still run when it ran.
     last_inference_at: float | None = None
     last_health_at: float | None = None
+    last_jpeg: bytes | None = None
 
     while not stop.is_set() and (max_ticks is None or ticks < max_ticks):
         ticks += 1
@@ -70,6 +71,18 @@ async def run_camera_loop(
             await _handle_failed_read(context, frame.error or "unknown error", log)
             await _sleep_remaining(tick_started, context.config.poll_interval_s, stop)
             continue
+
+        if frame.jpeg_bytes is last_jpeg:
+            # Literally the same object the source handed over last tick, so
+            # the camera has not produced anything since. A source that
+            # refreshes every few seconds against a worker ticking ten times
+            # a second would otherwise re-run the change gate and push
+            # identical bytes to every viewer thirty times over - CPU and
+            # WiFi spent carrying no new information. Sources that build a
+            # fresh frame per read never take this branch.
+            await _sleep_remaining(tick_started, context.config.poll_interval_s, stop)
+            continue
+        last_jpeg = frame.jpeg_bytes
 
         decision = context.change_gate.evaluate(frame.image)
 

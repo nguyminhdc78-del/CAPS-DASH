@@ -11,6 +11,8 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 from sqlalchemy import select
 
@@ -20,10 +22,12 @@ from caps_dash.db.enums import CameraSourceType
 from caps_dash.db.enums import SlotState as DbSlotState
 from caps_dash.db.models import Base, Camera, ParkingSlot, SlotStateHistory
 from caps_dash.db.session import create_session_factory, session_scope
+from caps_dash.db.types import utc_now
 from caps_dash.realtime.broadcast_hub import BroadcastHub
 from caps_dash.realtime.frame_protocol import decode_frame_message
 from caps_dash.vision.detectors import fake_detector
 from caps_dash.vision.domain import Detection, SlotState
+from caps_dash.vision.sources.base import Frame
 from caps_dash.workers import camera_loop, inference_runner
 from caps_dash.workers.camera_context import CameraContext, build_context
 from caps_dash.workers.camera_loop import run_camera_loop
@@ -101,7 +105,9 @@ def scripted_detector(monkeypatch: pytest.MonkeyPatch):
     inference_runner.reset_thread_detector()
 
 
-async def _run(settings, session_factory, camera_id, hub, ticks: int) -> CameraContext:
+async def _run(
+    settings, session_factory, camera_id, hub, ticks: int, source=None
+) -> CameraContext:
     loop = asyncio.get_running_loop()
     inference_pool = ThreadPoolExecutor(max_workers=1)
     db_pool = ThreadPoolExecutor(max_workers=1)
@@ -117,6 +123,8 @@ async def _run(settings, session_factory, camera_id, hub, ticks: int) -> CameraC
             hub=hub,
             reload_signals=signals,
         )
+        if source is not None:
+            context.source = source
         stop = asyncio.Event()
 
         async def rebuild(old: CameraContext) -> CameraContext:
@@ -367,6 +375,52 @@ async def test_the_heartbeat_forces_inference_on_a_static_scene(
 
     # A zero interval means every tick is overdue, so nothing is ever skipped.
     assert calls == 5
+
+
+async def test_a_repeated_frame_object_costs_nothing(
+    settings, session_factory, camera_id
+) -> None:
+    """An RTSP source refreshing every few seconds against a worker ticking
+    ten times a second hands back the SAME frame object in between. Running
+    the gate and pushing identical bytes to every viewer thirty times over
+    spends CPU and WiFi carrying no new information."""
+
+    class StuckSource:
+        """Hands out one frame object forever, as a cached source does."""
+
+        def __init__(self) -> None:
+            image = np.full((48, 64, 3), 90, dtype=np.uint8)
+            ok, buffer = cv2.imencode(".jpg", image)
+            assert ok
+            self._frame = Frame(
+                camera_id=1,
+                timestamp=utc_now(),
+                image=image,
+                jpeg_bytes=bytes(buffer),
+                ok=True,
+            )
+            self.reads = 0
+
+        camera_id = 1
+        fail_streak = 0
+
+        def read(self) -> Frame:
+            self.reads += 1
+            return self._frame
+
+        def close(self) -> None:
+            pass
+
+    hub = BroadcastHub()
+    published: list[bytes] = []
+    hub.publish = lambda _cid, message: published.append(message)  # type: ignore[method-assign]
+
+    source = StuckSource()
+    await _run(settings, session_factory, camera_id, hub, ticks=10, source=source)
+
+    assert source.reads == 10  # every tick still asked the camera
+    # ...but only the first frame was ever acted on.
+    assert len(published) <= 1
 
 
 async def test_a_camera_whose_scene_never_changes_still_looks_alive(
