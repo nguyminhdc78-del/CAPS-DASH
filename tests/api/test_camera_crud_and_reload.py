@@ -199,19 +199,31 @@ def test_list_query_count_is_constant_regardless_of_camera_count(client, admin):
     engine = client.app.state.caps.engine
 
     def count_queries_for_list() -> int:
-        count = 0
+        """Smallest count over a few runs.
 
-        def _tick(*_args: object, **_kwargs: object) -> None:
-            nonlocal count
-            count += 1
+        The listener attaches to the ENGINE, so anything else using it during
+        the window is counted too - the camera supervisor reads the same table
+        when it reconciles. Taking the minimum discards those sporadic extras
+        while still catching an N+1, which adds a query on EVERY run rather
+        than occasionally.
+        """
 
-        event.listen(engine, "before_cursor_execute", _tick)
-        try:
-            response = client.get("/api/cameras", headers=headers)
-            assert response.status_code == 200
-        finally:
-            event.remove(engine, "before_cursor_execute", _tick)
-        return count
+        def count_once() -> int:
+            count = 0
+
+            def _tick(*_args: object, **_kwargs: object) -> None:
+                nonlocal count
+                count += 1
+
+            event.listen(engine, "before_cursor_execute", _tick)
+            try:
+                response = client.get("/api/cameras", headers=headers)
+                assert response.status_code == 200
+            finally:
+                event.remove(engine, "before_cursor_execute", _tick)
+            return count
+
+        return min(count_once() for _ in range(3))
 
     _create_camera(client, headers, code="CAM-Q1")
     first_count = count_queries_for_list()
