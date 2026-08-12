@@ -446,7 +446,7 @@ Practical guidance:
 
 ### ESP32-CAM frame rate - measured
 
-Measured 2026-08-12 against the real module (AI-Thinker ESP32-CAM, OV2640,
+Measured 2026-08-12 against the real module (AI-Thinker ESP32-CAM, OV3660,
 VGA 640x480, RSSI -42 dBm) from the UNO Q:
 
 | | ms/frame | fps |
@@ -477,10 +477,24 @@ locked and settled, noise falls to 0.8 (peak 3.3) and the same car still reads
 ```
 curl "http://<camera>/control?var=aec&val=0"
 curl "http://<camera>/control?var=agc&val=0"
-curl "http://<camera>/control?var=awb&val=0"
 ```
 
+Or use the dashboard: the camera row has a settings panel with a single
+exposure-lock switch. The app remembers the setting and re-applies it whenever
+a camera worker starts, because the ESP32 keeps it in RAM only.
+
+**Leave white balance (`awb`) alone.** Locking it too moves noise by 0.1
+against a threshold of 8 - nothing - while turning every frame green, and the
+detector was trained on normally-coloured images.
+
 Allow a minute for the sensor to settle before measuring anything.
+
+**Check which sensor is fitted; do not assume.** `/status` reports
+`sensor_pid` - `0x3660` (13920) is an OV3660, `0x26` an OV2640. They need
+different defaults: the OV3660 is oversaturated and slightly dark out of
+reset, and the firmware applies `saturation=-2, brightness=1` for it, as
+Espressif's own reference example does. Assuming the wrong one is what
+produced a strongly green-cast picture on this installation.
 
 ### Idle CPU
 Minimal - the poll loop only. Nothing is encoded and no frame is published

@@ -21,7 +21,9 @@
  * client asking for /anh waits. The CAPS-DASH backend is meant to be the
  * only consumer; everything else reads frames from the backend.
  *
- * Board: AI-Thinker ESP32-CAM (OV2640).
+ * Board: AI-Thinker ESP32-CAM. Sensor is detected at runtime and reported
+ * by /status - do not assume OV2640, these modules ship with OV3660 too
+ * and the two need different defaults.
  * Arduino IDE: Tools > Board "AI Thinker ESP32-CAM", Partition "Huge APP".
  * Flashing needs IO0 pulled to GND at reset; remove it before running.
  */
@@ -128,12 +130,24 @@ static bool startCamera() {
 
   sensor_t *sensor = esp_camera_sensor_get();
   if (sensor != nullptr) {
+    // The OV3660 is oversaturated and slightly bright out of reset, and its
+    // image comes out mirrored relative to the OV2640. Espressif's own
+    // reference example special-cases it for exactly this reason, and
+    // skipping that is what produced a green-cast picture on this hardware.
+    // Never assume which sensor is fitted - these modules ship with both.
+    if (sensor->id.PID == OV3660_PID) {
+      sensor->set_brightness(sensor, 1);
+      sensor->set_saturation(sensor, -2);
+    }
+
     // Ceiling-mounted modules are usually installed upside down. Flipping
     // here rather than server-side matters: slot polygons are drawn against
     // whatever this camera sends, so the image must be the right way up
     // before anybody draws on it.
     sensor->set_vflip(sensor, 1);
     sensor->set_hmirror(sensor, 1);
+
+    Serial.printf("sensor : PID 0x%04x\n", sensor->id.PID);
   }
   return true;
 }
@@ -233,7 +247,11 @@ static void handleStatus() {
                 ",\"heap\":" + ESP.getFreeHeap() + ",\"psram\":" + (psramFound() ? "true" : "false") +
                 ",\"uptime_s\":" + (millis() / 1000);
   if (s != nullptr) {
-    body += String(",\"framesize\":") + s->status.framesize +
+    // The sensor id is reported so nobody has to guess which one is fitted -
+    // guessing it wrong is what sent a whole debugging session chasing the
+    // wrong colour settings.
+    body += String(",\"sensor_pid\":") + s->id.PID +
+            ",\"framesize\":" + s->status.framesize +
             ",\"quality\":" + s->status.quality +
             ",\"brightness\":" + s->status.brightness +
             ",\"contrast\":" + s->status.contrast +
