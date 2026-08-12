@@ -67,5 +67,8 @@
   "settingsDiagnosticsRssi": "Signal (RSSI)",
   "settingsDiagnosticsFramesize": "Frame size code",
   "settingsDiagnosticsHeap": "Free memory (heap)",
-  "settingsDiagnosticsUptime": "Uptime"
+  "settingsDiagnosticsUptime": "Uptime",
+  "sourceTypeEsp32camStream": "ESP32-CAM (MJPEG stream)",
+  "sourceTypeRtsp": "RTSP camera",
+  "sourceUrlRequiredRtsp": "The address must start with rtsp:// or rtsps://"
 }

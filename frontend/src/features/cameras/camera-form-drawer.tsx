@@ -14,9 +14,18 @@ import type { CameraRecord, CreateCameraInput, CameraSourceType } from './use-ca
 
 type FormValues = CreateCameraInput
 
-const SOURCE_TYPES: CameraSourceType[] = ['esp32cam_http', 'image_folder', 'video_file', 'fake']
+const SOURCE_TYPES: CameraSourceType[] = [
+  'esp32cam_http',
+  'esp32cam_stream',
+  'rtsp',
+  'image_folder',
+  'video_file',
+  'fake',
+]
 const SOURCE_TYPE_LABEL_KEYS: Record<CameraSourceType, string> = {
   esp32cam_http: 'camera:sourceTypeEsp32camHttp',
+  esp32cam_stream: 'camera:sourceTypeEsp32camStream',
+  rtsp: 'camera:sourceTypeRtsp',
   image_folder: 'camera:sourceTypeImageFolder',
   video_file: 'camera:sourceTypeVideoFile',
   fake: 'camera:sourceTypeFake',

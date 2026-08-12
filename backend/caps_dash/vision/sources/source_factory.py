@@ -17,6 +17,7 @@ from .esp32cam_http_source import Esp32CamHttpSource
 from .esp32cam_stream_source import Esp32CamStreamSource
 from .fake_source import FakeSource
 from .image_folder_source import ImageFolderSource
+from .rtsp_stream_source import RtspStreamSource
 from .video_file_source import VideoFileSource
 
 if TYPE_CHECKING:
@@ -38,6 +39,10 @@ def build_source(camera: Camera, settings: Settings) -> FrameSource:
             )
         case CameraSourceType.ESP32CAM_STREAM:
             return Esp32CamStreamSource(
+                camera.id, _require_url(camera), settings.camera_timeout_s
+            )
+        case CameraSourceType.RTSP:
+            return RtspStreamSource(
                 camera.id, _require_url(camera), settings.camera_timeout_s
             )
         case CameraSourceType.IMAGE_FOLDER:

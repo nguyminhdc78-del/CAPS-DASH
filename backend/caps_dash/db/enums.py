@@ -44,6 +44,10 @@ class CameraSourceType(StrEnum):
     # (handshake + capture + transfer, strictly sequential), while a stream
     # overlaps capture with transfer and makes `read()` a memory lookup.
     ESP32CAM_STREAM = "esp32cam_stream"
+    # Any RTSP camera - IP cameras, action cameras, NVR sub-streams. Decoded
+    # through OpenCV's FFMPEG backend, so the codec is whatever that build
+    # supports; the reference camera here is 640x480 HEVC.
+    RTSP = "rtsp"
     IMAGE_FOLDER = "image_folder"
     VIDEO_FILE = "video_file"
     FAKE = "fake"

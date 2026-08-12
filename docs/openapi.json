@@ -422,6 +422,7 @@
         "enum": [
           "esp32cam_http",
           "esp32cam_stream",
+          "rtsp",
           "image_folder",
           "video_file",
           "fake"

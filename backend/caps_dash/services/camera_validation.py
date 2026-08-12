@@ -17,6 +17,18 @@ from ..errors.exceptions import ValidationFailedError
 
 _URL_SCHEMES = {"http", "https"}
 
+# Which schemes each network source accepts. Driven by a table rather than a
+# chain of `if`s so that adding a source type cannot quietly land in the
+# "unchecked" branch - which is how `esp32cam_stream` went unvalidated after
+# it was introduced.
+_SCHEMES_BY_SOURCE: dict[CameraSourceType, frozenset[str]] = {
+    CameraSourceType.ESP32CAM_HTTP: frozenset({"http", "https"}),
+    CameraSourceType.ESP32CAM_STREAM: frozenset({"http", "https"}),
+    CameraSourceType.RTSP: frozenset({"rtsp", "rtsps"}),
+}
+
+_PATH_SOURCES = (CameraSourceType.IMAGE_FOLDER, CameraSourceType.VIDEO_FILE)
+
 
 def validate_source_url(source_type: CameraSourceType, source_url: str) -> None:
     """Scheme check for the one input that is also an SSRF/credential surface.
@@ -28,16 +40,18 @@ def validate_source_url(source_type: CameraSourceType, source_url: str) -> None:
     if not source_url:
         return
     parsed = urlsplit(source_url)
-    if source_type == CameraSourceType.ESP32CAM_HTTP:
-        if parsed.scheme not in _URL_SCHEMES or not parsed.hostname:
+
+    allowed = _SCHEMES_BY_SOURCE.get(source_type)
+    if allowed is not None:
+        if parsed.scheme not in allowed or not parsed.hostname:
+            expected = " or ".join(sorted(allowed))
             raise ValidationFailedError(
-                f"source_url must be an http(s) URL for {source_type}",
+                f"source_url must be a {expected} URL for {source_type}",
                 code=ErrorCode.CAMERA_SOURCE_INVALID,
             )
-    elif (
-        source_type in (CameraSourceType.IMAGE_FOLDER, CameraSourceType.VIDEO_FILE)
-        and parsed.scheme in _URL_SCHEMES
-    ):
+        return
+
+    if source_type in _PATH_SOURCES and parsed.scheme in _URL_SCHEMES:
         raise ValidationFailedError(
             f"source_url must be a filesystem path for {source_type}, not a URL",
             code=ErrorCode.CAMERA_SOURCE_INVALID,

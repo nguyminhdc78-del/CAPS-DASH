@@ -67,5 +67,8 @@
   "settingsDiagnosticsRssi": "Tín hiệu (RSSI)",
   "settingsDiagnosticsFramesize": "Mã kích thước khung hình",
   "settingsDiagnosticsHeap": "Bộ nhớ trống (heap)",
-  "settingsDiagnosticsUptime": "Thời gian hoạt động"
+  "settingsDiagnosticsUptime": "Thời gian hoạt động",
+  "sourceTypeEsp32camStream": "ESP32-CAM (luồng MJPEG)",
+  "sourceTypeRtsp": "Camera RTSP",
+  "sourceUrlRequiredRtsp": "Địa chỉ phải bắt đầu bằng rtsp:// hoặc rtsps://"
 }

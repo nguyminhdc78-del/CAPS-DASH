@@ -5,6 +5,21 @@ import { useTranslation } from 'react-i18next'
 import type { CameraSourceType } from './use-cameras-queries'
 
 /**
+ * Which source types take a URL, and which scheme each one requires. Mirrors
+ * `_SCHEMES_BY_SOURCE` in `camera_validation.py`; a type absent from here
+ * takes a filesystem path instead. Keeping it a table rather than a chain of
+ * comparisons is what stops a newly added source type silently falling into
+ * the "no validation" branch.
+ */
+const URL_SCHEMES: Partial<
+  Record<CameraSourceType, { pattern: RegExp; errorKey: string }>
+> = {
+  esp32cam_http: { pattern: /^https?:\/\/.+/i, errorKey: 'camera:sourceUrlRequiredHttp' },
+  esp32cam_stream: { pattern: /^https?:\/\/.+/i, errorKey: 'camera:sourceUrlRequiredHttp' },
+  rtsp: { pattern: /^rtsps?:\/\/.+/i, errorKey: 'camera:sourceUrlRequiredRtsp' },
+}
+
+/**
  * Swaps the `source_url` field's label, help text and validation based on
  * `source_type`. FAKE renders nothing: `camera_validation.py` ignores
  * `source_url` entirely for that type, so showing an editable field for it
@@ -21,7 +36,8 @@ export function CameraSourceFields({
 
   if (sourceType === 'fake') return null
 
-  const isUrl = sourceType === 'esp32cam_http'
+  const scheme = URL_SCHEMES[sourceType]
+  const isUrl = scheme !== undefined
 
   return (
     <Form.Item
@@ -33,14 +49,14 @@ export function CameraSourceFields({
       // whatever is already stored.
       extra={isEditing ? t('camera:sourceUrlLeaveBlank') : undefined}
       rules={
-        isUrl
+        scheme
           ? [
               {
                 validator: (_rule, value: string | undefined) => {
                   if (!value) return Promise.resolve()
-                  return /^https?:\/\/.+/i.test(value)
+                  return scheme.pattern.test(value)
                     ? Promise.resolve()
-                    : Promise.reject(new Error(t('camera:sourceUrlRequiredHttp')))
+                    : Promise.reject(new Error(t(scheme.errorKey)))
                 },
               },
             ]

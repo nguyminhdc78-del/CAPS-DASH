@@ -5,7 +5,13 @@ import { queryKeys } from '@/core/api/query-keys'
 import type { CameraListParams } from '@/core/api/query-keys'
 
 /** Mirrors `CameraSourceType` in backend/caps_dash/db/enums.py. */
-export type CameraSourceType = 'esp32cam_http' | 'image_folder' | 'video_file' | 'fake'
+export type CameraSourceType =
+  | 'esp32cam_http'
+  | 'esp32cam_stream'
+  | 'rtsp'
+  | 'image_folder'
+  | 'video_file'
+  | 'fake'
 
 /** Live counters from the running worker. `null` when no worker is running. */
 export interface CameraHealth {
