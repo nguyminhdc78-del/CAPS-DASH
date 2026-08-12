@@ -22,16 +22,19 @@ def clock(monkeypatch: pytest.MonkeyPatch) -> list[float]:
 
 
 def test_no_report_until_the_interval_is_reached(clock: list[float]) -> None:
-    tracker = StreamLagTracker(every=3)
+    tracker = StreamLagTracker(every_s=1.0)
 
     assert tracker.note_frame(0.0) is None  # the first frame only sets the origin
-    assert tracker.note_frame(33.0) is None
-    assert tracker.note_frame(66.0) is None
-    assert tracker.note_frame(99.0) is not None
+    clock[0] += 0.4
+    assert tracker.note_frame(400.0) is None
+    clock[0] += 0.4
+    assert tracker.note_frame(800.0) is None
+    clock[0] += 0.4
+    assert tracker.note_frame(1200.0) is not None
 
 
 def test_a_reader_keeping_up_reports_no_lag(clock: list[float]) -> None:
-    tracker = StreamLagTracker(every=2)
+    tracker = StreamLagTracker(every_s=0.5)
     tracker.note_frame(0.0)
 
     # Two frames a third of a second apart, and a third of a second of wall
@@ -50,7 +53,7 @@ def test_a_reader_falling_behind_reports_growing_lag(clock: list[float]) -> None
     """The case that matters. Measured on the board: the stream advanced 1.8 s
     while 30.4 s of real time passed, so the picture was half a minute old and
     getting older."""
-    tracker = StreamLagTracker(every=1)
+    tracker = StreamLagTracker(every_s=1.0)
     tracker.note_frame(0.0)
 
     clock[0] += 10.0
@@ -65,10 +68,35 @@ def test_a_reader_falling_behind_reports_growing_lag(clock: list[float]) -> None
     assert second.lag_growth_s == pytest.approx(9.0, abs=0.01)
 
 
+def test_a_collapsed_decode_rate_is_still_checked_on_time(clock: list[float]) -> None:
+    """The fault a frame-counted interval had.
+
+    Reporting every N frames stretched the gap between checks in exact
+    proportion to the failure it exists to catch: at 5 fps a 150-frame
+    interval was 30 s and at 1 fps two and a half minutes, so the picture
+    could be a minute stale before anything looked at it. On wall clock the
+    check lands just as often however badly the link is behaving.
+    """
+    tracker = StreamLagTracker(every_s=1.0)
+    tracker.note_frame(0.0)
+
+    # One frame a second reaching the reader, while the camera sends thirty:
+    # the stream advances 1/30 s per frame against 1 s of real time.
+    reports = []
+    for frame in range(1, 6):
+        clock[0] += 1.0
+        report = tracker.note_frame(frame * 1000.0 / 30.0)
+        if report is not None:
+            reports.append(report)
+
+    assert len(reports) == 5  # one per second of wall clock, not one per 150 frames
+    assert reports[-1].lag_s == pytest.approx(5.0 - 5.0 / 30.0, abs=0.01)
+
+
 def test_a_fixed_delay_shows_no_growth(clock: list[float]) -> None:
     """A constant lag is a buffer somewhere and merely annoying; only growth
     means the reader is being outrun."""
-    tracker = StreamLagTracker(every=1)
+    tracker = StreamLagTracker(every_s=1.0)
     tracker.note_frame(0.0)
 
     clock[0] += 5.0
@@ -82,7 +110,7 @@ def test_a_fixed_delay_shows_no_growth(clock: list[float]) -> None:
 
 def test_reset_starts_a_new_timeline(clock: list[float]) -> None:
     """A reconnect must not report the outage itself as lag."""
-    tracker = StreamLagTracker(every=1)
+    tracker = StreamLagTracker(every_s=1.0)
     tracker.note_frame(0.0)
     clock[0] += 60.0
 
@@ -96,6 +124,7 @@ def test_reset_starts_a_new_timeline(clock: list[float]) -> None:
     assert report.lag_s == pytest.approx(0.0, abs=0.01)
 
 
-def test_a_zero_interval_is_rejected() -> None:
+@pytest.mark.parametrize("every_s", [0.0, -1.0])
+def test_a_non_positive_interval_is_rejected(every_s: float) -> None:
     with pytest.raises(ValueError):
-        StreamLagTracker(every=0)
+        StreamLagTracker(every_s=every_s)

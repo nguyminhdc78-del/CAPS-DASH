@@ -33,11 +33,16 @@ def test_created_camera_appears_in_list_with_zero_slots(client, admin):
     item = body["items"][0]
     assert item["id"] == created["id"]
     assert item["slot_count"] == 0
-    # A camera that has not returned a frame yet is never reported online,
-    # whether or not a worker has started for it. `online` is what the
-    # dashboard colours a row by, so it must mean "answered recently", not
-    # "we have a process for this".
-    assert item["health"] is None or item["health"]["online"] is False
+    # Health is reported for an enabled camera, but not asserted to be offline
+    # here: a fake source answers within milliseconds of the supervisor
+    # starting it, so "has not returned a frame yet" is a window this test
+    # would be racing - it only ever passed because health was recorded after
+    # the detector ran rather than when the frame arrived.
+    #
+    # The claim itself - that `online` means "answered recently" and not "we
+    # have a process for this", which is what the dashboard colours a row by -
+    # is pinned deterministically by `test_a_camera_never_seen_is_not_online`.
+    assert item["health"] is None or "online" in item["health"]
 
 
 def test_a_disabled_camera_reports_no_health_at_all(client, admin):

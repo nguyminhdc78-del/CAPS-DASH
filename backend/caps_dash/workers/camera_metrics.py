@@ -24,12 +24,27 @@ class CameraMetrics:
     average_process_ms: float = 0.0
     _samples: int = field(default=0, repr=False)
 
-    def record_success(self, *, process_ms: float, tick_ms: float) -> None:
+    def record_success(self, *, tick_ms: float) -> None:
+        """One frame arrived and was handled. Says nothing about the detector.
+
+        Detector cost is recorded by `record_inference` instead, because the
+        two no longer happen together: a tick publishes a frame and starts a
+        detection at most, and most ticks start none at all.
+        """
         self.frames_ok += 1
         self.fail_streak = 0
-        self.last_process_ms = process_ms
         self.last_tick_ms = tick_ms
         self.last_seen_at = utc_now()
+
+    def record_inference(self, process_ms: float) -> None:
+        """One detector run finished.
+
+        Averaged over detector runs, not over ticks. Averaging over ticks made
+        the figure meaningless the moment the change gate started skipping
+        frames: a camera watching a still scene fed in a zero per tick and
+        reported an average a fraction of what a run actually costs.
+        """
+        self.last_process_ms = process_ms
         self._samples += 1
         self.average_process_ms += (process_ms - self.average_process_ms) / self._samples
 

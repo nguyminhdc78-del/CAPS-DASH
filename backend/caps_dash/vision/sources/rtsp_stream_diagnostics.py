@@ -37,10 +37,19 @@ class LagReport:
 
 
 class StreamLagTracker:
-    """Accumulates frame timestamps and reports every `every` frames."""
+    """Accumulates frame timestamps and reports every `every_s` of wall clock.
+
+    **Timed, not frame-counted.** Reporting every N frames stretched the gap
+    between checks in exact proportion to the fault it exists to catch: the
+    reader falls behind because frames are arriving slower than they are sent,
+    so at 5 fps a 150-frame interval is 30 s, and at 1 fps it is two and a
+    half minutes. The picture could be a minute stale before anything looked.
+    A wall-clock interval checks just as often however badly the link is
+    behaving - which is when it matters.
+    """
 
     __slots__ = (
-        "_every",
+        "_every_s",
         "_first_pts_ms",
         "_first_wall",
         "_last_lag_s",
@@ -48,10 +57,10 @@ class StreamLagTracker:
         "_since_report_wall",
     )
 
-    def __init__(self, every: int = 150) -> None:
-        if every < 1:
-            raise ValueError("report interval must be at least 1 frame")
-        self._every = every
+    def __init__(self, every_s: float = 1.0) -> None:
+        if every_s <= 0:
+            raise ValueError("report interval must be a positive number of seconds")
+        self._every_s = every_s
         self._first_pts_ms: float | None = None
         self._first_wall = 0.0
         self._since_report = 0
@@ -67,7 +76,7 @@ class StreamLagTracker:
         self._since_report = 0
 
     def note_frame(self, pts_ms: float) -> LagReport | None:
-        """Record one decoded frame. Returns a report every `every` frames."""
+        """Record one decoded frame. Returns a report every `every_s`."""
         now = time.monotonic()
 
         if self._first_pts_ms is None:
@@ -78,7 +87,7 @@ class StreamLagTracker:
             return None
 
         self._since_report += 1
-        if self._since_report < self._every:
+        if now - self._since_report_wall < self._every_s:
             return None
 
         wall_elapsed = now - self._first_wall

@@ -74,6 +74,42 @@ describe('createFrameUrlSwapper', () => {
     expect(revoked).toHaveLength(0) // neither preload ever fired load/error
   })
 
+  it('ignores a frame whose decode finished after a newer one', () => {
+    /** Holds every preload so the test can fire their loads in any order. */
+    class ManualImage {
+      static pending: ManualImage[] = []
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      private currentSrc = ''
+      set src(value: string) {
+        this.currentSrc = value
+        ManualImage.pending.push(this)
+      }
+      get src(): string {
+        return this.currentSrc
+      }
+    }
+    ManualImage.pending = []
+    vi.stubGlobal('Image', ManualImage)
+
+    const shown: string[] = []
+    const swapper = createFrameUrlSwapper<number>((url) => shown.push(url))
+
+    swapper.showFrame(new Blob(['older']), 1)
+    swapper.showFrame(new Blob(['newer']), 2)
+    const [older, newer] = ManualImage.pending
+
+    newer?.onload?.() // the second frame decodes first
+    older?.onload?.() // ...and the first arrives late
+
+    // Only the newer frame was ever displayed - the late one must not step
+    // the view backwards.
+    expect(shown).toEqual([created[1]])
+    // ...and it revoked its own url rather than the one on screen.
+    expect(revoked).toEqual([created[0]])
+    expect(revoked).not.toContain(created[1])
+  })
+
   it('dispose is a no-op when nothing was ever shown', () => {
     vi.stubGlobal('Image', InstantLoadImage)
     const swapper = createFrameUrlSwapper<null>(() => {})

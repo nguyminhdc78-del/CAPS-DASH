@@ -24,11 +24,23 @@ export function createFrameUrlSwapper<Payload>(
   onSwap: (url: string, payload: Payload) => void,
 ): FrameUrlSwapper<Payload> {
   let currentUrl: string | null = null
+  let issued = 0
+  let shown = 0
 
   function showFrame(jpeg: Blob, payload: Payload): void {
+    const sequence = ++issued
     const nextUrl = URL.createObjectURL(jpeg)
     const preload = new Image()
     preload.onload = preload.onerror = () => {
+      if (sequence <= shown) {
+        // A newer frame is already up. Decodes are concurrent and can finish
+        // out of order, and without this the older one would take the screen
+        // back a frame AND revoke the url the <img> is currently showing,
+        // blanking it. Rare at a three-second tick; ordinary at a live one.
+        URL.revokeObjectURL(nextUrl)
+        return
+      }
+      shown = sequence
       const previous = currentUrl
       currentUrl = nextUrl
       if (previous) URL.revokeObjectURL(previous)

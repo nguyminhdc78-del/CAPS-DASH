@@ -82,6 +82,25 @@ DEFAULT_MAX_AGE_S = 5.0
 # Generous enough that a healthy link never triggers it - a reconnect costs a
 # handshake and a wait for a keyframe - and tight enough that a car park is
 # never shown as it was ten seconds ago.
+#
+# **3.0 is measured, not chosen.** Tightening it looks like it should help and
+# does the opposite. On the reference installation - a MaixCam sending 640x480
+# HEVC at 30 fps over an ICS hotspot averaging 94 ms, which the board decodes
+# at ~12 fps - two five-minute windows:
+#
+#     RESYNC_LAG_S   decode fps   lag p90   lag p99   resyncs
+#     3.0                  11.8      1.84      3.92         5
+#     1.5                   9.6      2.51      5.71        13
+#
+# Worse on every axis. A reconnect is dead time: a handshake and a wait for a
+# keyframe, during which nothing arrives at all. Reconnecting sooner spends
+# more of the link on handshakes, which lowers throughput, which rebuilds the
+# backlog faster, which triggers the next reconnect sooner. The threshold has
+# to stay wide enough that the loop does not close on itself.
+#
+# The fix that removes this problem rather than balancing it is to ask the
+# camera for a rate the link can carry - `rtsp.Rtsp(fps=10)` on the MaixCam,
+# which defaults to 30 - and then none of the above happens.
 RESYNC_LAG_S = 3.0
 
 INITIAL_BACKOFF_S = 1.0
@@ -93,6 +112,16 @@ MAX_BACKOFF_S = 30.0
 IDLE_RETRY_S = 2.0
 
 
+# How much of the stream FFMPEG may consume before it decides what the stream
+# IS. The defaults are 5 MB and 5 s, and every packet read during that
+# inspection is buffered and handed back afterwards - so a session opens
+# already holding seconds of stale video, which the reader then has to chew
+# through before the picture is current. Cut, but not to the bone: too small
+# and a stream whose parameter sets arrive late is never identified at all.
+PROBE_BYTES = 500_000
+ANALYSE_MICROS = 1_000_000
+
+
 def _capture_options(timeout_s: float) -> str:
     """FFMPEG options string, `key;value` pairs joined by `|`.
 
@@ -100,9 +129,20 @@ def _capture_options(timeout_s: float) -> str:
     away. FFMPEG wants microseconds. Both spellings are passed because the
     option was renamed from `stimeout` to `timeout` and which one a build
     accepts depends on its FFMPEG version; the unrecognised one is ignored.
+
+    The rest are all one wish: hand this frame over now. `nobuffer` stops the
+    demuxer holding packets back, `low_delay` stops the decoder waiting on
+    frames that might be reordered ahead of this one, and the probe limits
+    stop a session being born seconds behind. None of them discard a frame -
+    they only stop frames being HELD - which matters, because a detector fed a
+    partly decoded picture is worse than a detector fed nothing.
     """
     micros = max(int(timeout_s * 1_000_000), 1_000_000)
-    return f"rtsp_transport;tcp|stimeout;{micros}|timeout;{micros}"
+    return (
+        f"rtsp_transport;tcp|stimeout;{micros}|timeout;{micros}"
+        f"|fflags;nobuffer|flags;low_delay"
+        f"|probesize;{PROBE_BYTES}|analyzeduration;{ANALYSE_MICROS}"
+    )
 
 
 class RtspStreamSource(FrameSource):

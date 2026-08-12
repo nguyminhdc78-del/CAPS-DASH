@@ -21,9 +21,10 @@ from caps_dash.vision.sources import rtsp_stream_source
 from caps_dash.vision.sources.rtsp_endpoint_probe import EndpointState, ProbeResult
 from caps_dash.vision.sources.rtsp_stream_source import RtspStreamSource, _capture_options
 
-# Frames the lag tracker needs before it reports; the stub delivers them fast,
-# so this only has to match the source's own default.
-FRAMES_PER_LAG_REPORT = 150
+# How long the lag tracker waits between reports - wall clock, not a frame
+# count, so a link that has collapsed to a frame a second is still checked as
+# often as a healthy one. Only has to match the source's own default.
+LAG_REPORT_INTERVAL_S = 1.0
 
 
 class StubCapture:
@@ -191,7 +192,15 @@ def test_a_healthy_stream_is_never_rebuilt(monkeypatch: pytest.MonkeyPatch) -> N
     install(monkeypatch, lambda _i: StubCapture(pts_step_ms=5000.0))
     source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0, resync_lag_s=1.0)
     try:
-        assert wait_for(lambda: source.frames_seen >= FRAMES_PER_LAG_REPORT + 5, timeout=20.0)
+        # Long enough that the tracker has certainly reported - twice over -
+        # while frames were flowing, so "never rebuilt" means it looked and
+        # declined rather than that it never got round to looking.
+        started = time.monotonic()
+        assert wait_for(
+            lambda: source.frames_seen >= 5
+            and time.monotonic() - started > LAG_REPORT_INTERVAL_S * 2,
+            timeout=20.0,
+        )
 
         assert source.resyncs == 0
     finally:
@@ -334,6 +343,19 @@ def test_transport_is_tcp_and_a_connect_cannot_hang_forever() -> None:
     assert "rtsp_transport;tcp" in options
     assert "stimeout;4000000" in options
     assert "timeout;4000000" in options
+
+
+def test_a_session_does_not_open_already_behind() -> None:
+    """FFMPEG buffers whatever it reads while working out what the stream is,
+    and hands it back afterwards - by default up to 5 MB or 5 s of it, so a
+    fresh session starts seconds in arrears. These bound that, and tell the
+    demuxer and decoder not to hold frames back once it is running."""
+    options = _capture_options(4.0)
+
+    assert "fflags;nobuffer" in options
+    assert "flags;low_delay" in options
+    assert "probesize;500000" in options
+    assert "analyzeduration;1000000" in options
 
 
 def test_a_tiny_timeout_still_leaves_a_usable_floor() -> None:

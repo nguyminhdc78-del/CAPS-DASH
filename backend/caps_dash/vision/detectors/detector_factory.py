@@ -27,6 +27,7 @@ def build_detector(settings: Settings) -> VehicleDetector:
                 model_path=settings.model_path,
                 input_size=settings.inference_input_size,
                 confidence=settings.detector_confidence,
+                threads=settings.inference_threads,
             )
         case "fake":
             return FakeVehicleDetector(confidence=settings.detector_confidence)
