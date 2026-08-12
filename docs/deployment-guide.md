@@ -430,6 +430,44 @@ The 1440 ms slowest run matters as much as the median: a tick occasionally
 takes more than twice the typical time, so leave slack rather than tuning the
 poll interval to the median.
 
+### ESP32-CAM frame rate - measured
+
+Measured 2026-08-12 against the real module (AI-Thinker ESP32-CAM, OV2640,
+VGA 640x480, RSSI -42 dBm) from the UNO Q:
+
+| | ms/frame | fps |
+|---|---|---|
+| `GET /anh` per frame, one connection each | 53 | 18.9 |
+| `GET /stream` (MJPEG, held open) | 46 | 21.7 |
+
+End to end through the app, to a WebSocket viewer, with the change gate on:
+
+| source | fps | frames inferred |
+|---|---|---|
+| `esp32cam_http` | 6.2 | 11% |
+| `esp32cam_stream` | 8.7 | 11% |
+
+The stream wins by 1.4x, and not for the reason the raw numbers suggest - the
+two transports are within 15% of each other. It wins because `read()` stops
+waiting on the network: a polling source spends ~53 ms of every tick before
+any work begins, while the stream source returns the newest frame from memory.
+
+**Lock the camera's exposure.** With `aec`, `agc` and `awb` on automatic, the
+sensor hunts continuously and the whole frame shifts brightness several levels
+between frames. Measured noise was then 7.5 mean absolute difference (peaks of
+38), against roughly 13 for a car occupying a sixth of the frame - the change
+gate cannot separate those, and inference fires on most frames. With exposure
+locked and settled, noise falls to 0.8 (peak 3.3) and the same car still reads
+13, which is the margin `MOTION_CHANGE_THRESHOLD` sits in:
+
+```
+curl "http://<camera>/control?var=aec&val=0"
+curl "http://<camera>/control?var=agc&val=0"
+curl "http://<camera>/control?var=awb&val=0"
+```
+
+Allow a minute for the sensor to settle before measuring anything.
+
 ### Idle CPU
 Minimal - the poll loop only. Nothing is encoded and no frame is published
 unless somebody is watching a live view.
