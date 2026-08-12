@@ -1,35 +1,43 @@
-"""Reads an RTSP camera through OpenCV's FFMPEG backend.
+"""Pulls one fresh frame at a time from an RTSP camera.
 
-WHY A READER THREAD IS NOT OPTIONAL HERE, measured on the board against the
-reference camera (640x480 HEVC at 30 fps).
+WHY IT CONNECTS, GRABS ONE FRAME AND DISCONNECTS, instead of holding the
+stream open. Three designs were measured on the board against the reference
+camera (640x480 HEVC, 30 fps, over WiFi):
 
-An RTSP capture hands out frames in order, oldest first. It does not skip to
-the newest one. So a worker ticking every 0.3 s consumes about 3 of the 30
-frames the camera sends each second, and the other 27 queue up. Measured by
-comparing each frame's own presentation timestamp against the wall clock:
+1. Read one frame per worker tick, stream held open. An RTSP capture yields
+   frames oldest-first and never skips, so consuming 3 of every 30 leaves the
+   other 27 queued. Measured by comparing each frame's presentation timestamp
+   against the wall clock: 5.4 s late after 6 s, 28.6 s late after 30 s. The
+   lag grew a second per second, without bound.
 
-    after  5.8 s of real time, the frame shown was from  0.4 s  -> 5.4 s late
-    after 30.4 s of real time, the frame shown was from  1.8 s  -> 28.6 s late
+2. A reader thread draining continuously, keeping only the newest frame. This
+   is correct when the network can carry the stream. Here it could not:
+   the thread got 1-8 of the 30 frames a second and lag still reached 40 s -
+   while the board sat at 0.83 load average, so it was not short of CPU. The
+   path to the camera was: 406-1052 ms round trip with 20% packet loss, and
+   0.13 Mbit/s actually flowing. TCP collapses under that, the camera keeps
+   encoding regardless, and the backlog is on ITS side where no amount of
+   draining can reach it.
 
-The lag grows one second per second, without bound. Within a minute the
-dashboard is showing a car park as it was a minute ago, which for this system
-is worse than showing nothing.
+3. This one. A new RTSP session starts at the live edge, so the first frame
+   it delivers is current by construction - there is no queue to inherit,
+   because there is no session old enough to have one. Lag is bounded by how
+   long a connect takes rather than by how long the process has been running.
 
-So a thread drains the stream continuously and keeps only the newest frame,
-and `read()` becomes a memory lookup. Cost, measured: `read()` is 17.0 ms a
-frame here, so draining 30 fps spends about half of one core. `grab()` was
-measured too, in case the drain could skip the BGR conversion for frames
-nobody consumes - it came out at 19.2 ms, no cheaper at all, so the thread
-just calls `read()`.
+The cost is real: a handshake plus a wait for a keyframe, several round trips
+on a link where a round trip is half a second. That buys a low frame rate. On
+this network the honest choice is a few fresh frames a minute over a smooth
+stream of frames from a minute ago - a car park dashboard that is confidently
+wrong is worse than one that updates slowly.
 
-The frame is kept DECODED, unlike `esp32cam_stream_source` which keeps raw
-JPEG. That source gets JPEG off the wire and decoding is the expensive part,
-so it defers it; here decoding already happened inside `read()` and it is the
-JPEG (6.5 ms) that is deferred to the frames actually consumed.
+If the link is ever fixed, design 2 is the better one and this module should
+go back to it; `rtsp_stream_diagnostics.StreamLagTracker` is what tells you
+whether the link can sustain it.
 
-TCP, not UDP. UDP decoded faster in isolation but loses packets, and a partly
-decoded frame is not a missing frame - it is a plausible-looking wrong one,
-which is exactly what a detector must never be fed.
+TCP, not UDP. UDP would drop rather than queue, which sounds like the fix
+here, but a partly decoded frame is not a missing frame - it is a
+plausible-looking wrong one, which is exactly what a detector must never be
+fed.
 """
 
 from __future__ import annotations
@@ -46,31 +54,29 @@ from ...observability.credential_redaction import redact_credentials
 from ...observability.logging_setup import get_logger
 from .base import Frame, FrameSource, failed_frame
 from .jpeg_utils import encode_jpeg
-from .rtsp_stream_diagnostics import StreamLagTracker
 
 logger = get_logger(__name__)
 
 DEFAULT_JPEG_QUALITY = 85
 
-# A frame older than this is not "the current view" any more, so `read()`
-# reports a failure rather than handing the worker a stale picture that would
-# keep a dead camera looking alive.
-DEFAULT_MAX_AGE_S = 5.0
+# How stale a frame may be before `read()` calls the camera down rather than
+# serve it. Generous, because one refresh cycle on a bad link is seconds - the
+# point is to catch a camera that has stopped, not to police the frame rate.
+DEFAULT_MAX_AGE_S = 30.0
+
+# Frames to pull before hanging up. The first decodable frame arrives at a
+# keyframe, and a decoder settling in sometimes returns a torn one first.
+FRAMES_PER_CONNECTION = 2
 
 INITIAL_BACKOFF_S = 1.0
 MAX_BACKOFF_S = 30.0
-
-# Consecutive failed reads before the capture is torn down and reopened. A
-# camera that is unplugged and plugged back in leaves `read()` returning False
-# forever otherwise - the handle stays open, it just never yields again.
-REOPEN_AFTER_FAILURES = 5
 
 
 def _capture_options(timeout_s: float) -> str:
     """FFMPEG options string, `key;value` pairs joined by `|`.
 
-    The timeout is what stops a vanished camera blocking the reader thread
-    forever. FFMPEG wants microseconds. Both spellings are passed because the
+    The timeout bounds how long a connect may hang on a camera that has gone
+    away. FFMPEG wants microseconds. Both spellings are passed because the
     option was renamed from `stimeout` to `timeout` and which one a build
     accepts depends on its FFMPEG version; the unrecognised one is ignored.
     """
@@ -79,7 +85,7 @@ def _capture_options(timeout_s: float) -> str:
 
 
 class RtspStreamSource(FrameSource):
-    """One RTSP capture per camera, drained by a background thread."""
+    """Refreshes one frame at a time, on a thread, so `read()` never blocks."""
 
     def __init__(
         self,
@@ -96,19 +102,13 @@ class RtspStreamSource(FrameSource):
         self._jpeg_quality = jpeg_quality
         self._max_age_s = max_age_s
 
-        # Only ever touched by the reader thread, plus `close()` after it has
-        # been joined - never by both at once.
-        self._capture: cv2.VideoCapture | None = None
-
         self._lock = threading.Lock()
         self._latest: np.ndarray | None = None
         self._latest_at = 0.0
         self._last_error = "stream has not connected yet"
         self._frames_seen = 0
         self._fail_streak = 0
-
-        self._lag = StreamLagTracker()
-        self._lag_s = 0.0
+        self._cycle_ms = 0.0
 
         self._stop = threading.Event()
         self._thread = threading.Thread(
@@ -126,11 +126,20 @@ class RtspStreamSource(FrameSource):
 
     @property
     def frames_seen(self) -> int:
-        """Frames the reader thread has decoded, for diagnostics."""
+        """Successful refreshes, for diagnostics."""
         return self._frames_seen
 
+    @property
+    def cycle_ms(self) -> float:
+        """How long the last connect-grab-disconnect took.
+
+        This IS the freshness of the picture: a frame can be no older than one
+        cycle, because the session it came from did not exist before that.
+        """
+        return self._cycle_ms
+
     def read(self) -> Frame:
-        """Newest decoded frame. Never raises - see `base.py`."""
+        """Newest fetched frame. Never raises - see `base.py`."""
         with self._lock:
             image = self._latest
             age = time.monotonic() - self._latest_at
@@ -139,11 +148,10 @@ class RtspStreamSource(FrameSource):
         if image is None:
             return self._fail(error or "no frame yet")
         if age > self._max_age_s:
-            return self._fail(f"stream stalled: newest frame is {age:.1f}s old")
+            return self._fail(f"camera stalled: newest frame is {age:.1f}s old")
 
-        # Encoded here, not in the thread: this is the one frame per tick that
-        # is actually consumed, and encoding all 30 a second would spend
-        # another fifth of a core on frames nobody ever sees.
+        # Encoded here, not on the refresh thread: this is the frame actually
+        # consumed, and the worker may tick faster than the camera refreshes.
         jpeg_bytes = encode_jpeg(image, self._jpeg_quality)
         self._fail_streak = 0
         return Frame(
@@ -158,100 +166,79 @@ class RtspStreamSource(FrameSource):
         self._stop.set()
         thread, self._thread = self._thread, None  # type: ignore[assignment]
         if thread is not None:
-            # Joined, unlike the MJPEG source which leaves its thread to die.
-            # That one only holds a socket; this one is inside `cv2` when it
-            # blocks, and releasing a VideoCapture another thread is reading
-            # is a crash rather than an error. The timeout is bounded by the
-            # FFMPEG read timeout, so shutdown cannot hang on a dead camera.
+            # Joined before anything is released: the thread is inside cv2
+            # when it blocks, and releasing a VideoCapture another thread is
+            # reading is a crash rather than an error. Bounded by the FFMPEG
+            # timeout, so shutdown cannot hang on a dead camera.
             thread.join(timeout=self._timeout_s + 2.0)
             if thread.is_alive():
-                # Leak the capture rather than release it underneath a live
-                # reader. A leaked handle on a process that is shutting down
-                # costs nothing; a segfault loses the shutdown.
                 logger.warning("rtsp_reader_did_not_stop", camera_id=self._camera_id)
-                return
-        self._release()
 
-    # --- reader thread -------------------------------------------------------
+    # --- refresh thread ------------------------------------------------------
 
     def _run(self) -> None:
         backoff = INITIAL_BACKOFF_S
         while not self._stop.is_set():
+            started = time.perf_counter()
             try:
-                if self._drain():
-                    backoff = INITIAL_BACKOFF_S
+                fetched = self._fetch_one()
             except Exception as exc:
                 self._record_error(f"{type(exc).__name__}: {exc}")
-            self._release()
-            if self._stop.is_set() or self._stop.wait(backoff):
+                fetched = False
+
+            if fetched:
+                self._cycle_ms = (time.perf_counter() - started) * 1000.0
+                self._frames_seen += 1
+                if self._frames_seen % 20 == 1:
+                    logger.info(
+                        "rtsp_refresh_cycle",
+                        camera_id=self._camera_id,
+                        cycle_ms=round(self._cycle_ms),
+                        refreshes=self._frames_seen,
+                    )
+                backoff = INITIAL_BACKOFF_S
+                # Straight back round: the cycle time is the frame rate, and
+                # any pause here is added directly to how old the picture is.
+                continue
+
+            if self._stop.wait(backoff):
                 return
             backoff = min(backoff * 2, MAX_BACKOFF_S)
 
-    def _drain(self) -> bool:
-        """Hold the stream open, keeping the newest frame. Returns True if it
-        ever produced one, so a connection that worked resets the backoff."""
-        capture = self._open()
-        if capture is None:
-            self._record_error("cannot open RTSP stream")
-            return False
-
-        produced = False
-        misses = 0
-        self._lag.reset()  # a new connection is a new timeline
-        while not self._stop.is_set():
-            ok, image = capture.read()
-            if not ok or image is None:
-                misses += 1
-                if misses >= REOPEN_AFTER_FAILURES:
-                    self._record_error("stream stopped yielding frames")
-                    return produced
-                continue
-            misses = 0
-            produced = True
-            with self._lock:
-                self._latest = image
-                self._latest_at = time.monotonic()
-                self._last_error = ""
-            self._frames_seen += 1
-
-            # Reported rather than merely measured: "the picture looks late"
-            # is not something anyone can act on, and the growth figure says
-            # whether the reader is losing ground or holding a fixed delay.
-            report = self._lag.note_frame(capture.get(cv2.CAP_PROP_POS_MSEC))
-            if report is not None:
-                self._lag_s = report.lag_s
-                logger.info(
-                    "rtsp_stream_lag",
-                    camera_id=self._camera_id,
-                    decode_fps=round(report.decode_fps, 1),
-                    lag_s=round(report.lag_s, 2),
-                    lag_growth_s=round(report.lag_growth_s, 2),
-                )
-        return produced
-
-    def _open(self) -> cv2.VideoCapture | None:
-        # Process-global and read by FFMPEG when the capture is constructed,
-        # so it is set here rather than at import: a module-level assignment
-        # would apply to every VideoCapture the process ever makes.
+    def _fetch_one(self) -> bool:
+        """One connect, one frame, one disconnect. True if a frame was stored."""
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = _capture_options(self._timeout_s)
         capture = cv2.VideoCapture(self._url, cv2.CAP_FFMPEG)
         if not capture.isOpened():
             capture.release()
-            return None
-        logger.info("rtsp_stream_opened", camera_id=self._camera_id)
-        self._capture = capture
-        return capture
+            self._record_error("cannot open RTSP stream")
+            return False
 
-    def _release(self) -> None:
-        if self._capture is not None:
-            self._capture.release()
-            self._capture = None
+        try:
+            image = None
+            for _ in range(FRAMES_PER_CONNECTION):
+                if self._stop.is_set():
+                    return False
+                ok, frame = capture.read()
+                if ok and frame is not None:
+                    image = frame
+            if image is None:
+                self._record_error("connected but no frame arrived")
+                return False
+
+            with self._lock:
+                self._latest = image
+                self._latest_at = time.monotonic()
+                self._last_error = ""
+            return True
+        finally:
+            capture.release()
 
     def _record_error(self, error: str) -> None:
         safe = redact_credentials(error)
         with self._lock:
             self._last_error = safe
-        logger.warning("rtsp_stream_failed", camera_id=self._camera_id, error=safe)
+        logger.warning("rtsp_fetch_failed", camera_id=self._camera_id, error=safe)
 
     def _fail(self, error: str) -> Frame:
         self._fail_streak += 1

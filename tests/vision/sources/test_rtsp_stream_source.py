@@ -1,10 +1,10 @@
 """The RTSP source, driven by a stub VideoCapture.
 
 No camera and no network: `cv2.VideoCapture` is replaced with a stub, so the
-behaviour that matters - keeping the newest frame, never raising, reopening a
-dead capture, redacting credentials - is exercised deterministically. Whether
-FFMPEG can decode a given codec, and what that costs, is not something a unit
-test can answer; that was measured on the board and is recorded in the
+behaviour that matters - a fresh session per frame, never raising, recovering
+from a dead camera, redacting credentials - is exercised deterministically.
+Whether a given link can carry a stream, and what that costs, is not something
+a unit test can answer; that was measured on the board and is recorded in the
 module docstring of the source.
 """
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
+from collections.abc import Callable
 
 import numpy as np
 import pytest
@@ -24,53 +24,53 @@ from caps_dash.vision.sources.rtsp_stream_source import RtspStreamSource, _captu
 class StubCapture:
     """Stands in for `cv2.VideoCapture`, scripted per instance."""
 
-    def __init__(self, *, opens: bool = True, reads: list[Any] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        opens: bool = True,
+        value: int | None = 120,
+        raises: Exception | None = None,
+    ) -> None:
         self.opens = opens
-        self._reads = list(reads or [])
+        self.value = value
+        self.raises = raises
         self.released = threading.Event()
-        self._pts_ms = 0.0
+        self.reads = 0
 
     def isOpened(self) -> bool:
         """Named for the cv2 API this stands in for, not for PEP 8."""
         return self.opens
 
-    def read(self) -> tuple[bool, Any]:
-        if not self._reads:
-            # Exhausted: pace the reader thread instead of letting it spin a
-            # core while the test makes its assertions.
-            time.sleep(0.01)
+    def read(self) -> tuple[bool, np.ndarray | None]:
+        self.reads += 1
+        if self.raises is not None:
+            raise self.raises
+        if self.value is None:
             return False, None
-        result = self._reads.pop(0)
-        if isinstance(result, Exception):
-            raise result
-        self._pts_ms += 1000.0 / 30.0  # a 30 fps stream, like the real camera
-        return result
-
-    def get(self, prop: int) -> float:
-        """Only CAP_PROP_POS_MSEC is asked for - the lag tracker's input."""
-        return self._pts_ms
+        return True, np.full((48, 64, 3), self.value, dtype=np.uint8)
 
     def release(self) -> None:
         self.released.set()
 
 
-def install(monkeypatch: pytest.MonkeyPatch, captures: list[StubCapture]) -> None:
-    """Hand out `captures` in order, one per `VideoCapture(...)` construction."""
-    queue = list(captures)
+def install(
+    monkeypatch: pytest.MonkeyPatch, make: Callable[[int], StubCapture]
+) -> list[StubCapture]:
+    """Build a fresh stub per `VideoCapture(...)`; returns the ones created."""
+    created: list[StubCapture] = []
     lock = threading.Lock()
 
     def factory(*_args: object, **_kwargs: object) -> StubCapture:
         with lock:
-            return queue.pop(0) if queue else StubCapture(opens=False)
+            capture = make(len(created))
+            created.append(capture)
+            return capture
 
     monkeypatch.setattr(rtsp_stream_source.cv2, "VideoCapture", factory)
+    return created
 
 
-def frame(value: int) -> tuple[bool, np.ndarray]:
-    return True, np.full((48, 64, 3), value, dtype=np.uint8)
-
-
-def wait_for(predicate: Any, timeout: float = 5.0) -> bool:
+def wait_for(predicate: Callable[[], bool], timeout: float = 5.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -79,13 +79,11 @@ def wait_for(predicate: Any, timeout: float = 5.0) -> bool:
     return False
 
 
-def source_for(monkeypatch: pytest.MonkeyPatch, captures: list[StubCapture]) -> RtspStreamSource:
-    install(monkeypatch, captures)
-    return RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
-
-
-def test_a_good_read_returns_an_image_and_its_jpeg(monkeypatch: pytest.MonkeyPatch) -> None:
-    source = source_for(monkeypatch, [StubCapture(reads=[frame(120)])])
+def test_a_good_refresh_returns_an_image_and_its_jpeg(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install(monkeypatch, lambda _i: StubCapture(value=120))
+    source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
     try:
         assert wait_for(lambda: source.frames_seen >= 1)
         result = source.read()
@@ -100,21 +98,34 @@ def test_a_good_read_returns_an_image_and_its_jpeg(monkeypatch: pytest.MonkeyPat
         source.close()
 
 
-def test_the_newest_frame_wins_not_the_oldest(monkeypatch: pytest.MonkeyPatch) -> None:
-    """THE reason this source has a reader thread. An RTSP capture yields
-    frames oldest-first and never skips, so a worker reading a few times a
-    second falls one second further behind per second - measured at 28.6 s
-    of lag after 30 s of running before the thread existed."""
-    frames = [frame(value) for value in range(10, 60)]
-    source = source_for(monkeypatch, [StubCapture(reads=frames)])
+def test_every_refresh_is_a_new_session_that_is_then_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THE design. A new RTSP session starts at the live edge, so its first
+    frame is current by construction - there is no queue to inherit because
+    there is no session old enough to have built one. Holding one open on
+    this link put the picture 40 s behind and growing."""
+    created = install(monkeypatch, lambda _i: StubCapture(value=120))
+    source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
     try:
-        assert wait_for(lambda: source.frames_seen >= 50)
+        assert wait_for(lambda: source.frames_seen >= 3)
+        assert len(created) >= 3
+        # Every session but possibly the one in flight has been hung up.
+        assert all(capture.released.is_set() for capture in created[:-1])
+    finally:
+        source.close()
+
+
+def test_the_freshest_value_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    install(monkeypatch, lambda i: StubCapture(value=min(10 + i, 255)))
+    source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
+    try:
+        assert wait_for(lambda: source.frames_seen >= 4)
         result = source.read()
 
-        assert result.ok
-        assert result.image is not None
-        # The last frame fed in, not the first.
-        assert int(result.image[0][0][0]) == 59
+        assert result.ok and result.image is not None
+        # Later sessions produce higher values; the newest one is served.
+        assert int(result.image[0][0][0]) >= 13
     finally:
         source.close()
 
@@ -122,7 +133,8 @@ def test_the_newest_frame_wins_not_the_oldest(monkeypatch: pytest.MonkeyPatch) -
 def test_read_before_any_frame_arrives_fails_rather_than_blocking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = source_for(monkeypatch, [StubCapture(opens=False)])
+    install(monkeypatch, lambda _i: StubCapture(opens=False))
+    source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
     try:
         result = source.read()
 
@@ -132,15 +144,32 @@ def test_read_before_any_frame_arrives_fails_rather_than_blocking(
         source.close()
 
 
-def test_a_stalled_stream_is_reported_not_served_stale(
+def test_a_connected_camera_that_sends_nothing_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opening the socket is not the same as the camera streaming; saying so
+    beats a frame that never arrives and no explanation."""
+    install(monkeypatch, lambda _i: StubCapture(value=None))
+    source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
+    try:
+        result = source.read()
+
+        assert not result.ok
+        assert wait_for(lambda: "no frame" in (source.read().error or ""))
+    finally:
+        source.close()
+
+
+def test_a_stalled_camera_is_reported_not_served_stale(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Handing over a frame from minutes ago would keep a dead camera looking
     alive, which is worse than saying the camera is down."""
-    install(monkeypatch, [StubCapture(reads=[frame(120)])])
+    install(monkeypatch, lambda _i: StubCapture(value=120))
     source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0, max_age_s=0.05)
     try:
         assert wait_for(lambda: source.frames_seen >= 1)
+        source.close()  # stop refreshing so the frame can go stale
         time.sleep(0.1)
 
         result = source.read()
@@ -151,18 +180,34 @@ def test_a_stalled_stream_is_reported_not_served_stale(
         source.close()
 
 
-def test_a_thrown_exception_does_not_kill_the_reader(
+def test_a_thrown_exception_does_not_kill_the_refresher(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`base.py` states this in capitals: one broken camera must not take down
     the worker loop that every other camera shares."""
-    dead = StubCapture(reads=[RuntimeError("decoder exploded")])
-    fresh = StubCapture(reads=[frame(77)])
-    source = source_for(monkeypatch, [dead, fresh])
+    install(
+        monkeypatch,
+        lambda i: StubCapture(raises=RuntimeError("decoder exploded"))
+        if i == 0
+        else StubCapture(value=77),
+    )
+    source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
     try:
-        # The thread caught it, backed off, and reconnected on its own.
+        # It caught the failure, backed off, and reconnected on its own.
         assert wait_for(lambda: source.frames_seen >= 1, timeout=8.0)
         assert source.read().ok
+    finally:
+        source.close()
+
+
+def test_a_failed_session_is_still_released(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A leaked capture per retry would exhaust the board within minutes on a
+    camera that is down."""
+    created = install(monkeypatch, lambda _i: StubCapture(value=None))
+    source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
+    try:
+        assert wait_for(lambda: len(created) >= 1)
+        assert wait_for(lambda: created[0].released.is_set())
     finally:
         source.close()
 
@@ -170,7 +215,7 @@ def test_a_thrown_exception_does_not_kill_the_reader(
 def test_credentials_never_reach_the_error_text(monkeypatch: pytest.MonkeyPatch) -> None:
     """`cameras.last_error` is readable by the security role while
     `source_url` is admin-only, so a password must not travel via an error."""
-    install(monkeypatch, [StubCapture(opens=False)])
+    install(monkeypatch, lambda _i: StubCapture(opens=False))
     source = RtspStreamSource(1, "rtsp://admin:hunter2@cam/live", 2.0)
     try:
         source._record_error("failed on rtsp://admin:hunter2@cam/live")
@@ -183,10 +228,10 @@ def test_credentials_never_reach_the_error_text(monkeypatch: pytest.MonkeyPatch)
         source.close()
 
 
-def test_transport_is_tcp_and_the_read_cannot_block_forever() -> None:
-    """UDP decodes faster but loses packets, and a partly decoded frame is a
-    plausible-looking wrong one - the worst possible input to a detector.
-    The timeout is what stops a vanished camera pinning the reader thread."""
+def test_transport_is_tcp_and_a_connect_cannot_hang_forever() -> None:
+    """UDP would drop rather than queue, which sounds like the fix for a bad
+    link, but a partly decoded frame is a plausible-looking wrong one - the
+    worst possible input to a detector."""
     options = _capture_options(4.0)
 
     assert "rtsp_transport;tcp" in options
@@ -199,15 +244,13 @@ def test_a_tiny_timeout_still_leaves_a_usable_floor() -> None:
     assert "stimeout;1000000" in _capture_options(0.05)
 
 
-def test_close_stops_the_reader_and_releases_the_capture(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Released only after the reader has been joined: releasing a capture a
-    live thread is reading is a crash, not an error."""
-    capture = StubCapture(reads=[frame(120)])
-    source = source_for(monkeypatch, [capture])
+def test_close_stops_the_refresher(monkeypatch: pytest.MonkeyPatch) -> None:
+    install(monkeypatch, lambda _i: StubCapture(value=120))
+    source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
     assert wait_for(lambda: source.frames_seen >= 1)
 
     source.close()
+    settled = source.frames_seen
+    time.sleep(0.2)
 
-    assert capture.released.is_set()
+    assert source.frames_seen == settled
