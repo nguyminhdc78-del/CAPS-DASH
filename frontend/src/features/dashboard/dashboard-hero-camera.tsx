@@ -9,6 +9,7 @@ import { StreamStatusBadge } from '@/features/live/stream-status-badge'
 import { useCameraStream } from '@/features/live/use-camera-stream'
 import { compareSlotCodes } from '@/features/slots/sort-slot-codes'
 import { DashboardHeroCameraFallback } from './dashboard-hero-camera-fallback'
+import { DashboardInferencePanel } from './dashboard-inference-panel'
 
 /**
  * The centrepiece: one live camera tile with the YOLO detection overlay,
@@ -78,6 +79,7 @@ export function DashboardHeroCamera({
           <div style={{ marginTop: 8 }}>
             <StreamStatusBadge status={stream.status} />
           </div>
+          <DashboardInferencePanel header={stream.header} />
         </>
       ) : (
         <DashboardHeroCameraFallback cameraId={activeCamera.id} status={stream.status} />

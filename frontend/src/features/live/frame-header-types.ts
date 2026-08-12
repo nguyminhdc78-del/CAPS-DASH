@@ -39,4 +39,11 @@ export interface FrameHeader {
   confidence: number
   slots: SlotOverlay[]
   detections: DetectionBox[]
+  /**
+   * True when the change gate skipped inference for this frame and the
+   * results above are carried over from the last frame the detector did look
+   * at. Not stale: the scene had not changed, which is why it was skipped.
+   * Absent on older backends.
+   */
+  inference_skipped?: boolean
 }

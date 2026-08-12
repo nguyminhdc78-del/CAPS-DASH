@@ -12,5 +12,11 @@
   "occupancyChartEmpty": "Chưa đủ dữ liệu lịch sử để vẽ biểu đồ",
   "alertsViewAll": "Xem tất cả",
   "updatedJustNow": "Vừa cập nhật",
-  "updatedSecondsAgo": "Cập nhật {{seconds}} giây trước"
+  "updatedSecondsAgo": "Cập nhật {{seconds}} giây trước",
+  "inferenceSavedLabel": "YOLO được nghỉ",
+  "inferenceSavedValue": "{{percent}}% khung hình",
+  "inferenceSavedHint": "Mỗi khung được so với khung gần nhất mà YOLO thực sự nhìn. Xe đỗ thì đứng yên, nên phần lớn khung không cần chạy lại nhận diện — đó là lý do hệ thống chạy nổi trên board này.",
+  "inferenceLatency": "Nhận diện {{ms}} ms/lần",
+  "inferenceIdle": "Chưa chạy nhận diện lần nào trong 30 giây qua",
+  "inferenceVehicles": "Đang thấy {{n}} phương tiện"
 }

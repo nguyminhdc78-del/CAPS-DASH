@@ -12,5 +12,11 @@
   "occupancyChartEmpty": "Not enough history yet to chart",
   "alertsViewAll": "View all",
   "updatedJustNow": "Updated just now",
-  "updatedSecondsAgo": "Updated {{seconds}}s ago"
+  "updatedSecondsAgo": "Updated {{seconds}}s ago",
+  "inferenceSavedLabel": "YOLO skipped",
+  "inferenceSavedValue": "{{percent}}% of frames",
+  "inferenceSavedHint": "Each frame is compared against the last one YOLO actually looked at. Parked cars do not move, so most frames need no fresh inference - which is what makes this run on this board at all.",
+  "inferenceLatency": "Inference {{ms}} ms per run",
+  "inferenceIdle": "No inference run in the last 30 seconds",
+  "inferenceVehicles": "Seeing {{n}} vehicles"
 }
