@@ -187,3 +187,64 @@ describe('roiEditorReducer', () => {
     expect(state.selection).toBeNull()
   })
 })
+
+describe('taking back a point while drawing', () => {
+  /**
+   * The reported failure: "vẽ cho đã, không back lại được". `ADD_VERTEX`
+   * pushes no history entry, so Ctrl+Z during a draw could never step back a
+   * point - and `UNDO` clears `draft`, so pressing it mid-draw destroyed the
+   * whole half-drawn polygon instead.
+   */
+  it('REMOVE_LAST_VERTEX drops only the newest point', () => {
+    const state = reduceAll([
+      { type: 'LOAD', slots: [], sourceFrame: FRAME },
+      { type: 'ADD_VERTEX', point: { x: 0, y: 0 } },
+      { type: 'ADD_VERTEX', point: { x: 10, y: 0 } },
+      { type: 'ADD_VERTEX', point: { x: 10, y: 10 } },
+      { type: 'REMOVE_LAST_VERTEX' },
+    ])
+
+    expect(state.draft).toEqual([
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+    ])
+  })
+
+  it('clears the draft entirely once the last point is taken back', () => {
+    const state = reduceAll([
+      { type: 'LOAD', slots: [], sourceFrame: FRAME },
+      { type: 'ADD_VERTEX', point: { x: 0, y: 0 } },
+      { type: 'REMOVE_LAST_VERTEX' },
+    ])
+
+    expect(state.draft).toBeNull()
+  })
+
+  it('is a no-op with nothing being drawn, and never touches committed slots', () => {
+    const loaded = reduceAll([{ type: 'LOAD', slots: [square('a', 'A1')], sourceFrame: FRAME }])
+    const state = roiEditorReducer(loaded, { type: 'REMOVE_LAST_VERTEX' })
+
+    expect(state).toBe(loaded)
+  })
+
+  it('does not disturb the slot history, so undo after finishing still works', () => {
+    const state = reduceAll([
+      { type: 'LOAD', slots: [square('a', 'A1')], sourceFrame: FRAME },
+      { type: 'ADD_VERTEX', point: { x: 100, y: 100 } },
+      { type: 'ADD_VERTEX', point: { x: 200, y: 100 } },
+      { type: 'REMOVE_LAST_VERTEX' },
+      { type: 'ADD_VERTEX', point: { x: 300, y: 100 } },
+      { type: 'ADD_VERTEX', point: { x: 300, y: 200 } },
+      { type: 'CLOSE_DRAFT' },
+    ])
+
+    expect(state.slots).toHaveLength(2)
+    // One entry: the CLOSE_DRAFT. Point-level edits must not stack up here,
+    // or Ctrl+Z after finishing would walk back through vertices instead of
+    // removing the slot the operator just made.
+    expect(state.history.past).toHaveLength(1)
+
+    const undone = roiEditorReducer(state, { type: 'UNDO' })
+    expect(undone.slots).toHaveLength(1)
+  })
+})

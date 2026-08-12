@@ -22,8 +22,8 @@
   "shortcutCloseDraft": "Double-click, Enter, or click the first vertex: close the polygon",
   "shortcutCancelDraft": "Esc: cancel the polygon being drawn",
   "shortcutInsertVertex": "Click a midpoint handle: insert a vertex",
-  "shortcutDeleteVertex": "Del or right-click a vertex: remove it (blocked below 3 vertices)",
-  "shortcutUndo": "Ctrl+Z: undo",
+  "shortcutDeleteVertex": "Del: delete the selected vertex, or the whole slot if one is selected",
+  "shortcutUndo": "Ctrl+Z: undo - while drawing, steps back one point",
   "shortcutRedo": "Ctrl+Shift+Z: redo",
   "shortcutPan": "Space-drag or middle-click drag: pan",
   "shortcutZoom": "Mouse wheel: zoom at the cursor",
@@ -40,5 +40,10 @@
   "saveConfirmModified": "Modified",
   "saveConfirmRemoved": "Removed",
   "saveConfirmNoChanges": "No changes to save.",
-  "saveSuccess": "Slot map saved"
+  "saveSuccess": "Slot map saved",
+  "finishPolygon": "Finish slot",
+  "removeLastPoint": "Remove last point",
+  "cancelDraft": "Cancel drawing",
+  "draftNeedsMore": "{{count}} point(s) — at least {{min}} needed to finish",
+  "draftReady": "{{count}} points — press Finish, or double-click, or Enter"
 }

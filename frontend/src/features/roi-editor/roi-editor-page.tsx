@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router'
 
 import type { FrameSize } from './coordinate-transform'
+import { RoiDraftActionBar } from './roi-draft-action-bar'
 import { RoiEditorCanvas } from './roi-editor-canvas'
 import { RoiEditorEmptyState } from './roi-editor-empty-state'
 import { RoiEditorToolbar } from './roi-editor-toolbar'
@@ -51,13 +52,28 @@ export default function RoiEditorPage(): ReactNode {
     [snapshot.image, viewportApi],
   )
 
+  // One undo, two meanings, deliberately. Mid-draw the operator's last action
+  // was placing a point, so that is what must come back off - stepping into
+  // the slot history there would discard the whole half-drawn polygon.
+  const handleUndo = useCallback(() => {
+    if (editor.drafting) editor.removeLastVertex()
+    else editor.undo()
+  }, [editor])
+
+  // A selected vertex deletes that vertex; a selected polygon deletes the
+  // polygon. Previously the second case silently did nothing, so Del looked
+  // broken whenever a whole slot was selected.
+  const handleDeleteSelected = useCallback(() => {
+    const selection = editor.state.selection
+    if (!selection) return
+    if (selection.vertexIndex !== null) editor.deleteVertex(selection.slotKey, selection.vertexIndex)
+    else editor.deleteSlot(selection.slotKey)
+  }, [editor])
+
   useRoiKeyboardShortcuts({
-    onUndo: editor.undo,
+    onUndo: handleUndo,
     onRedo: editor.redo,
-    onDeleteSelected: () => {
-      const selection = editor.state.selection
-      if (selection && selection.vertexIndex !== null) editor.deleteVertex(selection.slotKey, selection.vertexIndex)
-    },
+    onDeleteSelected: handleDeleteSelected,
     onCloseDraft: () => mode === 'draw' && editor.closeDraft(),
     onCancelDraft: () => editor.cancelDraft(),
   })
@@ -112,13 +128,23 @@ export default function RoiEditorPage(): ReactNode {
           onZoomTo100={() => viewportApi.zoomTo100(containerSize, sourceFrame)}
           canUndo={editor.canUndo}
           canRedo={editor.canRedo}
-          onUndo={editor.undo}
+          onUndo={handleUndo}
           onRedo={editor.redo}
           dirty={editor.state.dirty}
           onDiscard={() => editor.state.sourceFrame && editor.loadSlots(editor.state.baseline, editor.state.sourceFrame)}
           onSave={save.requestSave}
           saveDisabledReason={saveDisabledReason}
           saving={save.saving}
+        />
+
+        <RoiDraftActionBar
+          draftLength={editor.state.draft?.length ?? 0}
+          hasSelection={editor.state.selection !== null}
+          selectionIsVertex={editor.state.selection?.vertexIndex !== null && editor.state.selection !== null}
+          onFinish={editor.closeDraft}
+          onRemoveLastPoint={editor.removeLastVertex}
+          onCancelDraft={editor.cancelDraft}
+          onDeleteSelected={handleDeleteSelected}
         />
 
         <div style={{ display: 'flex', gap: 12, height: '70vh' }}>

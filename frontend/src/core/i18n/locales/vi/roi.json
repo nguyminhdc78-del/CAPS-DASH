@@ -22,8 +22,8 @@
   "shortcutCloseDraft": "Nhấp đúp, Enter, hoặc nhấp vào đỉnh đầu tiên: đóng đa giác",
   "shortcutCancelDraft": "Esc: hủy đa giác đang vẽ",
   "shortcutInsertVertex": "Nhấp vào điểm giữa: chèn một đỉnh",
-  "shortcutDeleteVertex": "Del hoặc chuột phải vào đỉnh: xóa đỉnh đó (chặn khi còn dưới 3 đỉnh)",
-  "shortcutUndo": "Ctrl+Z: hoàn tác",
+  "shortcutDeleteVertex": "Del: xoá đỉnh đang chọn, hoặc xoá cả ô nếu đang chọn cả ô",
+  "shortcutUndo": "Ctrl+Z: hoàn tác — khi đang vẽ thì lùi lại một điểm",
   "shortcutRedo": "Ctrl+Shift+Z: làm lại",
   "shortcutPan": "Giữ phím Space kéo hoặc kéo bằng chuột giữa: di chuyển khung hình",
   "shortcutZoom": "Cuộn chuột: phóng to/thu nhỏ tại vị trí con trỏ",
@@ -40,5 +40,10 @@
   "saveConfirmModified": "Đã sửa",
   "saveConfirmRemoved": "Đã xóa",
   "saveConfirmNoChanges": "Không có thay đổi để lưu.",
-  "saveSuccess": "Đã lưu sơ đồ ô đỗ"
+  "saveSuccess": "Đã lưu sơ đồ ô đỗ",
+  "finishPolygon": "Hoàn tất ô",
+  "removeLastPoint": "Bớt điểm cuối",
+  "cancelDraft": "Huỷ nét vẽ",
+  "draftNeedsMore": "Đã có {{count}} điểm — cần ít nhất {{min}} để hoàn tất",
+  "draftReady": "{{count}} điểm — bấm Hoàn tất, hoặc nhấp đúp, hoặc Enter"
 }

@@ -22,6 +22,7 @@ import type { EditorSelection, EditorSlot, RoiEditorState } from './roi-editor-t
 export type RoiEditorAction =
   | { type: 'LOAD'; slots: EditorSlot[]; sourceFrame: FrameSize }
   | { type: 'ADD_VERTEX'; point: Point }
+  | { type: 'REMOVE_LAST_VERTEX' }
   | { type: 'CLOSE_DRAFT' }
   | { type: 'CANCEL_DRAFT' }
   | { type: 'BEGIN_DRAG' }
@@ -61,6 +62,18 @@ export function roiEditorReducer(state: RoiEditorState, action: RoiEditorAction)
 
     case 'ADD_VERTEX':
       return { ...state, draft: [...(state.draft ?? []), action.point] }
+
+    case 'REMOVE_LAST_VERTEX': {
+      // Undo for the half-drawn polygon. It deliberately does NOT go through
+      // the history stack: history holds `slots`, and a draft is not a slot
+      // yet, so pushing an entry per click would make Ctrl+Z step through
+      // vertices and committed slots in one confusing sequence - and then
+      // `UNDO` would clear the draft anyway. Dropping the last point is the
+      // whole operation.
+      if (!state.draft || state.draft.length === 0) return state
+      const remaining = state.draft.slice(0, -1)
+      return { ...state, draft: remaining.length > 0 ? remaining : null }
+    }
 
     case 'CLOSE_DRAFT': {
       if (!state.draft || state.draft.length < MIN_SLOT_VERTICES) return state

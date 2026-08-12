@@ -13,14 +13,21 @@ import type { EditorSelection, EditorSlot } from './roi-editor-types'
 export function useRoiEditorState() {
   const [state, dispatch] = useReducer(roiEditorReducer, initialRoiEditorState)
 
+  const drafting = (state.draft?.length ?? 0) > 0
+
   return {
     state,
-    canUndo: state.history.past.length > 0,
+    drafting,
+    // While a polygon is being drawn, "undo" means "take back that last
+    // point" - which is what an operator mid-draw actually wants, and what
+    // the history stack cannot express because a draft is not a slot yet.
+    canUndo: drafting || state.history.past.length > 0,
     canRedo: state.history.future.length > 0,
 
     loadSlots: (slots: EditorSlot[], sourceFrame: FrameSize) =>
       dispatch({ type: 'LOAD', slots, sourceFrame }),
     addVertex: (point: Point) => dispatch({ type: 'ADD_VERTEX', point }),
+    removeLastVertex: () => dispatch({ type: 'REMOVE_LAST_VERTEX' }),
     closeDraft: () => dispatch({ type: 'CLOSE_DRAFT' }),
     cancelDraft: () => dispatch({ type: 'CANCEL_DRAFT' }),
     beginDrag: () => dispatch({ type: 'BEGIN_DRAG' }),
