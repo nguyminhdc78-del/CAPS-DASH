@@ -65,7 +65,8 @@ from ...observability.credential_redaction import redact_credentials
 from ...observability.logging_setup import get_logger
 from .base import Frame, FrameSource, failed_frame
 from .jpeg_utils import encode_jpeg
-from .rtsp_endpoint_probe import EndpointState, endpoint_label, probe
+from .rtsp_endpoint_probe import EndpointState, probe
+from .rtsp_media_check import describe_failure
 from .rtsp_stream_diagnostics import StreamLagTracker
 
 logger = get_logger(__name__)
@@ -246,10 +247,11 @@ class RtspStreamSource(FrameSource):
         """
         capture = self._open()
         if capture is None:
-            self._record_error(
-                f"camera at {endpoint_label(self._url)} accepts connections but is "
-                "not answering RTSP - restart the stream on the camera"
-            )
+            # One DESCRIBE, only now that a capture has already failed, to say
+            # WHICH failure this is. OpenCV collapses "the camera is not
+            # producing video", "it wants credentials" and "the network is
+            # gone" into one unopened handle.
+            self._record_error(describe_failure(self._url, self._timeout_s))
             return False
 
         produced = False

@@ -237,18 +237,22 @@ def test_read_before_any_frame_arrives_fails_rather_than_blocking(
         source.close()
 
 
-def test_a_reachable_port_that_will_not_open_says_so_precisely(
+def test_a_capture_that_will_not_open_is_diagnosed_not_guessed_at(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Measured on the reference camera: a raw DESCRIBE returned 200 OK while
-    FFMPEG failed the same connection with `454 Session Not Found`. "Cannot
-    open RTSP stream" sends the operator to look at the network, which was
-    healthy at 24 ms with no packet loss."""
+    """OpenCV collapses every cause into an unopened handle. Measured on the
+    reference camera, the cause was an empty stream description - and
+    FFMPEG's own `454 Session Not Found` pointed at session management, which
+    had nothing to do with it. So the failure path asks the camera."""
     install(monkeypatch, lambda _i: StubCapture(opens=False))
+    monkeypatch.setattr(
+        rtsp_stream_source,
+        "describe_failure",
+        lambda url, _timeout: f"chan doan that: {url}",
+    )
     source = RtspStreamSource(1, "rtsp://cam.local:8554/live", 2.0)
     try:
-        assert wait_for(lambda: "not answering RTSP" in (source.read().error or ""))
-        assert "cam.local:8554" in (source.read().error or "")
+        assert wait_for(lambda: "chan doan that" in (source.read().error or ""))
     finally:
         source.close()
 
