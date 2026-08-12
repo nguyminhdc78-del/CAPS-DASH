@@ -110,3 +110,8 @@ frontend/node_modules/
 frontend/dist/
 # Ops-only tooling (paramiko for board access); never part of the app.
 .venv-ops/
+
+# Firmware dumps contain the NVS partition, which stores WiFi credentials
+# in plaintext. Never commit one - a private repo is still cloned and shared,
+# and git history is forever.
+firmware/backup/
