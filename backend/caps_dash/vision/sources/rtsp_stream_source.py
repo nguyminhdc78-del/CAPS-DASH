@@ -54,7 +54,7 @@ from ...observability.credential_redaction import redact_credentials
 from ...observability.logging_setup import get_logger
 from .base import Frame, FrameSource, failed_frame
 from .jpeg_utils import encode_jpeg
-from .rtsp_endpoint_probe import EndpointState, probe
+from .rtsp_endpoint_probe import EndpointState, endpoint_label, probe
 
 logger = get_logger(__name__)
 
@@ -229,7 +229,16 @@ class RtspStreamSource(FrameSource):
         capture = cv2.VideoCapture(self._url, cv2.CAP_FFMPEG)
         if not capture.isOpened():
             capture.release()
-            self._record_error("cannot open RTSP stream")
+            # The probe already established that the port accepts
+            # connections, so this is not a network problem: the camera took
+            # the socket and did not answer RTSP on it. Observed on the
+            # reference camera - a raw DESCRIBE from two different machines
+            # timed out over a 24 ms link with no packet loss, which is a
+            # wedged server, not a slow one.
+            self._record_error(
+                f"camera at {endpoint_label(self._url)} accepts connections but is "
+                "not answering RTSP - restart the stream on the camera"
+            )
             return False
 
         try:

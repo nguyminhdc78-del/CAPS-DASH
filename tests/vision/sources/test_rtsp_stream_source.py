@@ -314,3 +314,18 @@ def test_the_jpeg_is_encoded_once_per_refresh_not_once_per_read(
         assert encodes == settled
     finally:
         source.close()
+
+
+def test_a_reachable_port_that_will_not_open_says_so_precisely(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Measured on the reference camera: a raw DESCRIBE from two machines
+    timed out over a 24 ms link with no loss. That is a wedged server, and
+    "cannot open RTSP stream" sends the operator looking at the network."""
+    install(monkeypatch, lambda _i: StubCapture(opens=False))
+    source = RtspStreamSource(1, "rtsp://cam.local:8554/live", 2.0)
+    try:
+        assert wait_for(lambda: "not answering RTSP" in (source.read().error or ""))
+        assert "cam.local:8554" in (source.read().error or "")
+    finally:
+        source.close()

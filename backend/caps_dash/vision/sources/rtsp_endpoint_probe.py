@@ -54,6 +54,21 @@ class ProbeResult:
         return self.state is EndpointState.REFUSED
 
 
+def endpoint_label(source_url: str) -> str:
+    """`host:port` for an error message, or the raw URL if it cannot be read.
+
+    Never includes the userinfo section, so a URL carrying credentials cannot
+    leak into `cameras.last_error` - which the security role can read while
+    `source_url` itself is admin-only.
+    """
+    parts = urlsplit(source_url)
+    try:
+        port = parts.port or DEFAULT_RTSP_PORT
+    except ValueError:
+        port = DEFAULT_RTSP_PORT
+    return f"{parts.hostname}:{port}" if parts.hostname else "the camera"
+
+
 def probe(source_url: str, timeout_s: float) -> ProbeResult:
     """TCP-connect to the URL's host and port. Never raises."""
     parts = urlsplit(source_url)

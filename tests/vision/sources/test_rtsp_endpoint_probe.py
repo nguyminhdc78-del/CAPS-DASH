@@ -17,6 +17,7 @@ from caps_dash.vision.sources import rtsp_endpoint_probe
 from caps_dash.vision.sources.rtsp_endpoint_probe import (
     DEFAULT_RTSP_PORT,
     EndpointState,
+    endpoint_label,
     probe,
 )
 
@@ -106,3 +107,23 @@ def test_a_timeout_is_reported_as_unreachable(monkeypatch: pytest.MonkeyPatch) -
     assert result.state is EndpointState.UNREACHABLE
     # A real outage; hammering it helps nobody.
     assert not result.worth_retrying_soon
+
+
+def test_the_label_names_the_endpoint_without_its_credentials() -> None:
+    """`cameras.last_error` is readable by the security role while
+    `source_url` is admin-only, so a label built for an error message must
+    never carry the userinfo section."""
+    label = endpoint_label("rtsp://admin:hunter2@cam.local:8554/live")
+
+    assert label == "cam.local:8554"
+    assert "hunter2" not in label
+
+
+def test_the_label_falls_back_to_the_default_port() -> None:
+    assert endpoint_label("rtsp://cam.local/live") == f"cam.local:{DEFAULT_RTSP_PORT}"
+
+
+def test_the_label_survives_a_url_it_cannot_parse() -> None:
+    """An error message must not itself raise while reporting an error."""
+    assert endpoint_label("not a url at all") == "the camera"
+    assert endpoint_label("rtsp://cam:not-a-port/live") == f"cam:{DEFAULT_RTSP_PORT}"
