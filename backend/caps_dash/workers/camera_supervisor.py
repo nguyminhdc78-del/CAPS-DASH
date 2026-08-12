@@ -15,6 +15,7 @@ from ..db.models import Camera
 from ..db.session import session_scope
 from ..observability.logging_setup import get_logger
 from ..realtime.broadcast_hub import BroadcastHub
+from ..services import camera_control_service
 from .camera_context import CameraContext, build_context
 from .camera_loop import run_camera_loop
 from .reload_signals import ReloadSignals
@@ -190,6 +191,8 @@ class CameraSupervisor:
                 self._contexts[camera_id] = context
                 backoff = INITIAL_BACKOFF_S  # a clean start resets the penalty
 
+                await self._restore_sensor_settings(context)
+
                 await run_camera_loop(context, self._stop, rebuild=self._rebuild)
                 return  # asked to stop
 
@@ -210,6 +213,38 @@ class CameraSupervisor:
                     return
                 except TimeoutError:
                     backoff = min(backoff * 2, MAX_BACKOFF_S)
+
+    async def _restore_sensor_settings(self, context: CameraContext) -> None:
+        """Put the camera's remembered sensor settings back after it restarts.
+
+        The ESP32 keeps them in RAM only, so a power blip silently reverts the
+        exposure lock to automatic - and an unlocked sensor hunts, which the
+        change gate reads as motion and which takes inference from a small
+        fraction of frames to nearly all of them. Nothing would report that;
+        the board would just get slower.
+
+        Best effort: a camera that does not answer is already reported through
+        its fail-streak, and a brightness value that did not stick must never
+        stop the loop from running.
+        """
+        config = context.config
+        if not config.sensor_settings:
+            return
+        try:
+            applied = await camera_control_service.reapply_remembered(
+                source_type=config.source_type,
+                source_url=config.source_url,
+                code=config.code,
+                remembered=config.sensor_settings,
+                settings=self._settings,
+            )
+        except Exception:
+            logger.warning(
+                "sensor_settings_not_restored", camera_id=config.id, exc_info=True
+            )
+            return
+        if applied:
+            logger.info("sensor_settings_restored", camera_id=config.id, applied=applied)
 
     def _build(self, camera_id: int) -> CameraContext:
         return build_context(

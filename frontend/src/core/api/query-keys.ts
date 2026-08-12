@@ -63,6 +63,13 @@ export const queryKeys = {
     list: (params: CameraListParams = {}) => ['cameras', 'list', params] as const,
     detail: (id: number) => ['cameras', 'detail', id] as const,
   },
+  // Sensor settings (`GET/PATCH /cameras/{id}/settings`) are deliberately not
+  // nested under `cameras.*`: they are a live device read, not a row from the
+  // camera list, and mixing the two would make `cameras.all()` invalidation
+  // either miss a stale sensor read or refetch it far more than it changes.
+  cameraSettings: {
+    detail: (cameraId: number | null) => ['cameraSettings', 'detail', cameraId] as const,
+  },
   slots: {
     all: () => ['slots'] as const,
     // Filters are part of the key on purpose: two different floor/state

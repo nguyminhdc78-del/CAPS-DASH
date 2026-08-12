@@ -4,6 +4,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   QuestionCircleOutlined,
+  SettingOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons'
 import { Button, Popconfirm, Space, Switch, Tag, Tooltip } from 'antd'
@@ -28,6 +29,7 @@ export interface CamerasColumnActions {
   onEdit: (camera: CameraRecord) => void
   onToggleEnabled: (camera: CameraRecord) => void
   onDelete: (camera: CameraRecord) => void
+  onOpenSettings: (camera: CameraRecord) => void
 }
 
 /** Column defs kept out of `cameras-table.tsx` so that file stays a thin wrapper. */
@@ -108,6 +110,14 @@ export function buildCamerasColumns(
           <Button size="small" icon={<EditOutlined />} onClick={() => actions.onEdit(record)}>
             {t('common:edit')}
           </Button>
+          <Tooltip title={t('camera:sensorSettings')}>
+            <Button
+              size="small"
+              icon={<SettingOutlined />}
+              onClick={() => actions.onOpenSettings(record)}
+              aria-label={t('camera:sensorSettings')}
+            />
+          </Tooltip>
           <Tooltip title={t('camera:roiEditor')}>
             <Link to={`/cameras/${record.id}/roi`}>
               <Button size="small" icon={<VideoCameraOutlined />} aria-label={t('camera:roiEditor')} />

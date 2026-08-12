@@ -46,6 +46,7 @@ class CameraConfig:
     confidence: float
     source_type: str
     source_url: str
+    sensor_settings: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -138,6 +139,7 @@ def load_camera_config(session: Session, camera_id: int) -> CameraConfig:
         confidence=camera.confidence,
         source_type=camera.source_type,
         source_url=camera.source_url,
+        sensor_settings=dict(camera.sensor_settings_json or {}),
     )
 
 

@@ -76,24 +76,32 @@ class SensorSettings:
     values: dict[str, Any]
 
 
-def _device_base(camera: Camera) -> str:
+def device_base(source_type: str, source_url: str, code: str) -> str:
     """`http://host` from the configured frame URL, without its path.
+
+    Takes primitives rather than a `Camera` row: the camera worker holds a
+    detached `CameraConfig`, never an ORM instance bound to a session that
+    lives in another thread.
 
     The stored URL points at `/anh` or `/stream`; the control endpoints live
     beside them, so the path is dropped rather than guessed at.
     """
-    if camera.source_type not in CONTROLLABLE_SOURCES:
+    if source_type not in CONTROLLABLE_SOURCES:
         raise ValidationFailedError(
-            f"Camera {camera.code} has no controllable sensor",
+            f"Camera {code} has no controllable sensor",
             code=ErrorCode.CAMERA_SOURCE_INVALID,
         )
-    parts = urlsplit(camera.source_url)
+    parts = urlsplit(source_url)
     if not parts.scheme or not parts.netloc:
         raise ValidationFailedError(
-            f"Camera {camera.code} has no usable source_url",
+            f"Camera {code} has no usable source_url",
             code=ErrorCode.CAMERA_SOURCE_INVALID,
         )
     return urlunsplit((parts.scheme, parts.netloc, "", "", ""))
+
+
+def _device_base(camera: Camera) -> str:
+    return device_base(camera.source_type, camera.source_url, camera.code)
 
 
 async def read_settings(camera: Camera, settings: Settings) -> SensorSettings:
@@ -143,7 +151,13 @@ async def apply_settings(
     them queue anyway - with the added risk of one timing out and leaving the
     sensor half-configured.
     """
-    base = _device_base(camera)
+    return await apply_to(_device_base(camera), changes, settings)
+
+
+async def apply_to(
+    base: str, changes: dict[str, int], settings: Settings
+) -> dict[str, bool]:
+    """The primitive form, for callers that have no ORM row."""
     applied: dict[str, bool] = {}
     async with httpx.AsyncClient(timeout=settings.camera_timeout_s) as client:
         for name, value in changes.items():
@@ -158,6 +172,23 @@ async def apply_settings(
                     code=ErrorCode.CAMERA_UNREACHABLE,
                 ) from exc
     return applied
+
+
+async def reapply_remembered(
+    *, source_type: str, source_url: str, code: str,
+    remembered: dict[str, int], settings: Settings,
+) -> dict[str, bool]:
+    """Push remembered settings back onto a camera that has just restarted.
+
+    Called when a worker builds its context - on startup and on every reload.
+    Best-effort by design: a camera that does not answer is already reported
+    through its own fail-streak, and failing to restore a brightness value
+    must not stop the loop from running.
+    """
+    if not remembered or source_type not in CONTROLLABLE_SOURCES:
+        return {}
+    base = device_base(source_type, source_url, code)
+    return await apply_to(base, validate(dict(remembered)), settings)
 
 
 async def update(
@@ -176,6 +207,10 @@ async def update(
     """
     validate(changes)
     applied = await apply_settings(camera, changes, ctx.settings)
+
+    # Remember the intent, not just the effect. The device forgets on every
+    # power cycle; this row is what lets the worker put it back.
+    camera.sensor_settings_json = {**dict(camera.sensor_settings_json or {}), **changes}
 
     audit_service.record(
         session,

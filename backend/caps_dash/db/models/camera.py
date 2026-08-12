@@ -9,9 +9,9 @@ sources of truth; this table is the only one.
 from __future__ import annotations
 
 import datetime as dt
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, CheckConstraint, Float, Integer, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base
@@ -67,6 +67,14 @@ class Camera(Base, TimestampMixin):
 
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(UtcDateTime, nullable=True)
     last_error: Mapped[str] = mapped_column(Text, default="")
+
+    # Sensor settings this camera SHOULD be running with, re-applied whenever
+    # its worker starts. The ESP32 keeps these in RAM only, so a power blip
+    # silently reverts the exposure lock to automatic - and an unlocked sensor
+    # hunts, which the change gate reads as motion and which takes inference
+    # from 11% of frames to nearly all of them. Nothing would report that; the
+    # board would just get slower. Persisting the intent is what closes it.
+    sensor_settings_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     slots: Mapped[list[ParkingSlot]] = relationship(
         back_populates="camera",

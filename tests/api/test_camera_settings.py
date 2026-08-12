@@ -156,3 +156,42 @@ def test_a_source_without_a_sensor_is_refused(client: TestClient, admin, db: Ses
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "CAMERA_SOURCE_INVALID"
+
+
+def test_settings_are_remembered_for_the_next_restart(
+    client: TestClient, admin, camera, device, db: Session
+):
+    """The device keeps these in RAM only.
+
+    A power blip reverts the exposure lock to automatic, an unlocked sensor
+    hunts, and the change gate reads that as motion - taking inference from a
+    small fraction of frames to nearly all of them, with nothing reporting a
+    problem. The worker re-applies this row when it (re)starts, so what
+    matters here is that the intent was persisted at all.
+    """
+    client.patch(
+        "/api/cameras/1/settings",
+        headers=auth_headers(client, "boss"),
+        json={"lock_exposure": True, "brightness": 1},
+    )
+
+    db.refresh(camera)
+    assert camera.sensor_settings_json == {
+        "brightness": 1,
+        "aec": 0,
+        "agc": 0,
+        "awb": 0,
+    }
+
+
+def test_remembering_merges_rather_than_replaces(
+    client: TestClient, admin, camera, device, db: Session
+):
+    """Changing one slider must not forget the exposure lock."""
+    headers = auth_headers(client, "boss")
+    client.patch("/api/cameras/1/settings", headers=headers, json={"lock_exposure": True})
+    client.patch("/api/cameras/1/settings", headers=headers, json={"contrast": 2})
+
+    db.refresh(camera)
+    assert camera.sensor_settings_json["aec"] == 0
+    assert camera.sensor_settings_json["contrast"] == 2

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useErrorMessage } from '@/core/i18n/use-error-message'
 import { CameraFormDrawer } from './camera-form-drawer'
+import { CameraSettingsDrawer } from './camera-settings-drawer'
 import { CamerasTable } from './cameras-table'
 import { useCamerasQuery, useDeleteCameraMutation, useUpdateCameraMutation } from './use-cameras-queries'
 import type { CameraRecord } from './use-cameras-queries'
@@ -21,6 +22,8 @@ export default function CamerasPage(): ReactNode {
 
   const [editingCamera, setEditingCamera] = useState<CameraRecord | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [settingsCamera, setSettingsCamera] = useState<CameraRecord | null>(null)
+  const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false)
 
   const handleAdd = (): void => {
     setEditingCamera(null)
@@ -30,6 +33,11 @@ export default function CamerasPage(): ReactNode {
   const handleEdit = (camera: CameraRecord): void => {
     setEditingCamera(camera)
     setDrawerOpen(true)
+  }
+
+  const handleOpenSettings = (camera: CameraRecord): void => {
+    setSettingsCamera(camera)
+    setSettingsDrawerOpen(true)
   }
 
   const handleToggleEnabled = async (camera: CameraRecord): Promise<void> => {
@@ -64,9 +72,15 @@ export default function CamerasPage(): ReactNode {
         onEdit={handleEdit}
         onToggleEnabled={(camera) => void handleToggleEnabled(camera)}
         onDelete={(camera) => void handleDelete(camera)}
+        onOpenSettings={handleOpenSettings}
       />
 
       <CameraFormDrawer open={drawerOpen} camera={editingCamera} onClose={() => setDrawerOpen(false)} />
+      <CameraSettingsDrawer
+        open={settingsDrawerOpen}
+        camera={settingsCamera}
+        onClose={() => setSettingsDrawerOpen(false)}
+      />
     </Card>
   )
 }

@@ -16,16 +16,13 @@ migration that reintroduces the hazard fails here instead of on the board.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, func, select
-
-from caps_dash.db.enums import CameraSourceType
-from caps_dash.db.models import Camera, ParkingSlot, SlotStateHistory
-from caps_dash.db.session import create_session_factory, session_scope
+from sqlalchemy import create_engine
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -33,45 +30,49 @@ SQUARE = [[10.0, 10.0], [110.0, 10.0], [110.0, 110.0], [10.0, 110.0]]
 
 
 def _seed(database_url: str) -> None:
-    """A camera with slots and history - the rows a cascade would take."""
-    engine = create_engine(database_url)
-    engine.dispose()
+    """A camera with slots and history - the rows a cascade would take.
 
+    Raw SQL, naming only the columns that exist at the revision under test.
+    Using the ORM here would couple this test to whatever the models look like
+    today: the models always run ahead of the schema, so the first migration
+    to add a column would break the seed rather than the thing being tested.
+    """
     engine = create_engine(database_url)
     with engine.begin() as connection:
         connection.exec_driver_sql("PRAGMA foreign_keys=ON")
-    factory = create_session_factory(engine)
-
-    with session_scope(factory) as session:
-        camera = Camera(
-            code="C1", source_type=CameraSourceType.ESP32CAM_HTTP, source_url="http://x/anh"
+        connection.exec_driver_sql(
+            "INSERT INTO cameras (id, code, name, floor, source_type, source_url,"
+            " poll_interval_s, vote_window, vote_threshold, confidence, is_enabled,"
+            " frame_width, frame_height, last_error, created_at, updated_at)"
+            " VALUES (1, 'C1', '', 'B1', 'esp32cam_http', 'http://x/anh',"
+            " 3.0, 5, 4, 0.25, 1, 0, 0, '', '2026-01-01', '2026-01-01')"
         )
-        camera.slots = [
-            ParkingSlot(code="A1", polygon_json=SQUARE, src_frame_width=640, src_frame_height=480),
-            ParkingSlot(code="A2", polygon_json=SQUARE, src_frame_width=640, src_frame_height=480),
-        ]
-        session.add(camera)
-        session.flush()
-        session.add(
-            SlotStateHistory(
-                slot_id=camera.slots[0].id,
-                camera_code="C1",
-                slot_code="A1",
-                floor="B1",
-                new_state="OCCUPIED",
+        for slot_id, code in ((1, "A1"), (2, "A2")):
+            connection.exec_driver_sql(
+                "INSERT INTO parking_slots (id, camera_id, code, floor, polygon_json,"
+                " src_frame_width, src_frame_height, current_state, is_active,"
+                " created_at, updated_at)"
+                " VALUES (?, 1, ?, 'B1', ?, 640, 480, 'UNKNOWN', 1,"
+                " '2026-01-01', '2026-01-01')",
+                (slot_id, code, json.dumps(SQUARE)),
             )
+        connection.exec_driver_sql(
+            "INSERT INTO slot_state_history (id, slot_id, camera_code, slot_code,"
+            " floor, previous_state, new_state, changed_at, clock_suspect)"
+            " VALUES (1, 1, 'C1', 'A1', 'B1', 'UNKNOWN', 'OCCUPIED',"
+            " '2026-01-01', 0)"
         )
     engine.dispose()
 
 
 def _counts(database_url: str) -> dict[str, int]:
     engine = create_engine(database_url)
-    factory = create_session_factory(engine)
-    with session_scope(factory) as session:
+    with engine.begin() as connection:
         counts = {
-            "cameras": session.execute(select(func.count(Camera.id))).scalar_one(),
-            "slots": session.execute(select(func.count(ParkingSlot.id))).scalar_one(),
-            "history": session.execute(select(func.count(SlotStateHistory.id))).scalar_one(),
+            table: connection.exec_driver_sql(
+                f"SELECT count(*) FROM {table}"  # noqa: S608 - fixed table names
+            ).scalar_one()
+            for table in ("cameras", "parking_slots", "slot_state_history")
         }
     engine.dispose()
     return counts
@@ -102,7 +103,7 @@ def test_upgrading_to_head_keeps_slots_and_history(tmp_path: Path):
 
     _seed(url)
     before = _counts(url)
-    assert before == {"cameras": 1, "slots": 2, "history": 1}
+    assert before == {"cameras": 1, "parking_slots": 2, "slot_state_history": 1}
 
     upgraded = alembic("upgrade", "head")
     assert upgraded.returncode == 0, upgraded.stderr
