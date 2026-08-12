@@ -145,6 +145,7 @@ All configuration from environment; never from `.env` in production. This table 
 | CAMERA_TIMEOUT_S | float | `5.0` | HTTP request timeout to camera. |
 | CAMERA_FAIL_STREAK_OFFLINE | int | `3` | Mark offline after this many consecutive failures. |
 | SNAPSHOT_MAX_AGE_S | float | `10.0` | Reuse cached snapshot in ROI editor for this long. |
+| MIN_INFERENCE_INTERVAL_S | float | `0.0` | Floor on the gap between two detector runs. `0` disables it. Only needed on a source fast enough for the detector to become the bottleneck - see "RTSP cameras" below. |
 | **Reporting** |
 | HISTORY_DEFAULT_SPAN_DAYS | int | `7` | Default history query range. |
 | HISTORY_MAX_SPAN_DAYS | int | `92` | Maximum range (cap unbounded queries on shared hardware). |
@@ -495,6 +496,53 @@ different defaults: the OV3660 is oversaturated and slightly dark out of
 reset, and the firmware applies `saturation=-2, brightness=1` for it, as
 Espressif's own reference example does. Assuming the wrong one is what
 produced a strongly green-cast picture on this installation.
+
+### RTSP cameras - measured
+
+Measured 2026-08-12 against an action camera (640x480 HEVC, 30 fps) joined to
+the same hotspot as the board.
+
+**The source connects, takes one frame and disconnects.** That looks wasteful
+and is not. Three designs were tried:
+
+| design | result |
+|---|---|
+| one frame per worker tick, session held open | 5.4 s late after 6 s; 28.6 s late after 30 s |
+| reader thread draining continuously | 1-8 fps of the 30 sent; still reached 40 s late |
+| connect, grab one frame, disconnect | bounded at one connect (~3.1 s here) |
+
+An RTSP capture yields frames oldest-first and never skips, so a consumer
+slower than the camera leaves the rest queued and the lag grows a second per
+second, without bound. Draining continuously fixes that only if the network
+can carry the stream. This one could not:
+
+```
+ping camera:  406-1052 ms round trip, 20% packet loss
+throughput:   0.13 Mbit/s actually flowing
+board load:   0.83 - not short of CPU
+```
+
+TCP collapses under that loss, the camera keeps encoding regardless, and the
+backlog sits on ITS side where draining cannot reach it. A new RTSP session
+starts at the live edge, so its first frame is current by construction - there
+is no queue to inherit because no session is old enough to have built one.
+
+**If the link is healthy, the draining design is better.** `rtsp_stream_lag`
+in the logs reports `decode_fps` and `lag_growth_s`; a growth near zero means
+the link can sustain a held-open stream, and
+`vision/sources/rtsp_stream_diagnostics.py` exists to tell you that.
+
+**Set `MIN_INFERENCE_INTERVAL_S` on an RTSP camera.** `poll_interval_s` sets
+two rates at once - how often the detector may look, and how often a frame
+reaches the browser. A 30 fps camera wants a fast tick for a smooth picture
+and a slow one for a detector costing ~616 ms a run. `1.5` was enough here to
+take the board from 3.54 load average to 0.83.
+
+**A camera that refuses the connection is not broken.** Action cameras run
+their RTSP server only while the streaming screen is open, and the dashboard
+now says so in as many words: *"refused the connection - it is on the network
+but not streaming"*. The reader retries every 2 s in that state rather than
+backing off, so a picture appears promptly once the camera is switched on.
 
 ### Idle CPU
 Minimal - the poll loop only. Nothing is encoded and no frame is published

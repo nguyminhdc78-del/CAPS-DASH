@@ -2,6 +2,21 @@
 
 All notable changes to CAPS-DASH documented by release. Format follows [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [Unreleased]
+
+### Added
+- RTSP camera source (`rtsp`), for IP cameras, action cameras and NVR sub-streams. Connects, takes one frame and disconnects; see `docs/deployment-guide.md` for the three designs measured and why this one won on the link available.
+- `MIN_INFERENCE_INTERVAL_S`: a floor on the gap between detector runs, independent of `poll_interval_s`. Needed on a fast source, where one setting cannot serve both the detector's rate and the live view's.
+- `rtsp_endpoint_probe`: separates "the camera refused the connection" - its stream is switched off - from "the camera cannot be reached", in milliseconds rather than a full connect timeout. The message reaches the dashboard verbatim.
+- `StreamLagTracker`: reports `decode_fps` and `lag_growth_s` per stream, turning "the picture looks late" into a number.
+- Dashboard: live detector readouts under the hero camera - share of frames the change gate kept the detector off, median inference time, current vehicle count. All from frame headers the socket already sends.
+- `esp32cam_stream` is now selectable in the camera form; the backend had supported it since 0.1.0 but the UI never offered it.
+
+### Fixed
+- Every process restart wrote one phantom `UNKNOWN -> FREE` history row per slot. 96% of the rows on the reference board were these, burying the real transitions. UNKNOWN is a warm-up state, never an observation, and the tracker is now seeded from `parking_slots.current_state`.
+- Camera health was recorded only on ticks where the detector ran, so a camera watching a static scene - the case the change gate exists to skip - looked offline while working perfectly. It is now recorded on any frame arriving, and on a time interval rather than a tick count.
+- `validate_source_url` classified source types with a chain of ifs, and `esp32cam_stream` had silently landed in the unvalidated branch. Now a table, with a test asserting every enum member is covered.
+
 ## [0.1.0] — 2026-08-11
 
 Initial release. Greenfield implementation of the complete car-park administration dashboard.

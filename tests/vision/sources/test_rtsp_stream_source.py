@@ -284,3 +284,33 @@ def test_a_refused_port_never_reaches_the_decoder(
         assert created == []
     finally:
         source.close()
+
+
+def test_the_jpeg_is_encoded_once_per_refresh_not_once_per_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The worker ticks ten times a second for a smooth picture while a
+    connect-per-frame refresh takes seconds. Encoding on read made the same
+    unchanged frame pay for JPEG about thirty times over."""
+    install(monkeypatch, lambda _i: StubCapture(value=120))
+    encodes = 0
+    real_encode = rtsp_stream_source.encode_jpeg
+
+    def counting_encode(*args: object, **kwargs: object) -> bytes:
+        nonlocal encodes
+        encodes += 1
+        return real_encode(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(rtsp_stream_source, "encode_jpeg", counting_encode)
+    source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
+    try:
+        assert wait_for(lambda: source.frames_seen >= 1)
+        settled = encodes
+
+        for _ in range(5):
+            assert source.read().ok
+
+        # Reading five times added no encoding of its own.
+        assert encodes == settled
+    finally:
+        source.close()

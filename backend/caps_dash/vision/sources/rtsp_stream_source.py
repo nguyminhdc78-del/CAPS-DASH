@@ -110,6 +110,7 @@ class RtspStreamSource(FrameSource):
 
         self._lock = threading.Lock()
         self._latest: np.ndarray | None = None
+        self._latest_jpeg: bytes | None = None
         self._latest_at = 0.0
         self._last_error = "stream has not connected yet"
         self._frames_seen = 0
@@ -148,17 +149,15 @@ class RtspStreamSource(FrameSource):
         """Newest fetched frame. Never raises - see `base.py`."""
         with self._lock:
             image = self._latest
+            jpeg_bytes = self._latest_jpeg
             age = time.monotonic() - self._latest_at
             error = self._last_error
 
-        if image is None:
+        if image is None or jpeg_bytes is None:
             return self._fail(error or "no frame yet")
         if age > self._max_age_s:
             return self._fail(f"camera stalled: newest frame is {age:.1f}s old")
 
-        # Encoded here, not on the refresh thread: this is the frame actually
-        # consumed, and the worker may tick faster than the camera refreshes.
-        jpeg_bytes = encode_jpeg(image, self._jpeg_quality)
         self._fail_streak = 0
         return Frame(
             camera_id=self._camera_id,
@@ -245,8 +244,15 @@ class RtspStreamSource(FrameSource):
                 self._record_error("connected but no frame arrived")
                 return False
 
+            # Encoded ONCE here, not per `read()`. The worker ticks ten times
+            # a second for a smooth picture while a connect-per-frame refresh
+            # takes seconds, so encoding on read meant the same unchanged
+            # frame paid 6.5 ms of JPEG about thirty times over.
+            jpeg_bytes = encode_jpeg(image, self._jpeg_quality)
+
             with self._lock:
                 self._latest = image
+                self._latest_jpeg = jpeg_bytes
                 self._latest_at = time.monotonic()
                 self._last_error = ""
             return True
