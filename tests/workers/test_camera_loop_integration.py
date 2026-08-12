@@ -369,6 +369,70 @@ async def test_the_heartbeat_forces_inference_on_a_static_scene(
     assert calls == 5
 
 
+async def test_the_rate_floor_keeps_the_detector_off_a_fast_camera(
+    settings, session_factory, camera_id
+) -> None:
+    """A 30 fps RTSP camera can hand the loop a changed frame every tick, and
+    inference costs ~616 ms of a shared four-core board. The floor caps how
+    often the detector may look, WITHOUT slowing the tick - which also sets
+    how often the browser gets a frame."""
+    gated = settings.model_copy(
+        update={
+            # Every tick counts as changed, so only the floor can stop it.
+            "motion_change_threshold": 0.0,
+            "motion_force_interval_s": 3600.0,
+            "min_inference_interval_s": 3600.0,
+        }
+    )
+    calls = 0
+    real_inference = camera_loop.run_inference
+
+    def counting_inference(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return real_inference(*args, **kwargs)
+
+    camera_loop.run_inference = counting_inference
+    try:
+        await _run(gated, session_factory, camera_id, BroadcastHub(), ticks=8)
+    finally:
+        camera_loop.run_inference = real_inference
+
+    # The first frame has no previous result to publish instead, so it always
+    # runs; every later tick is inside the floor.
+    assert calls == 1
+
+
+async def test_the_heartbeat_still_fires_through_the_rate_floor(
+    settings, session_factory, camera_id
+) -> None:
+    """The floor throttles change-triggered work only. The heartbeat is the
+    bound on how long the system may go on being wrong, so a floor that
+    silenced it would trade a known limit for an unbounded one."""
+    gated = settings.model_copy(
+        update={
+            "motion_change_threshold": 10_000.0,  # nothing ever counts as changed
+            "motion_force_interval_s": 0.0,  # ...so every tick is overdue
+            "min_inference_interval_s": 3600.0,
+        }
+    )
+    calls = 0
+    real_inference = camera_loop.run_inference
+
+    def counting_inference(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return real_inference(*args, **kwargs)
+
+    camera_loop.run_inference = counting_inference
+    try:
+        await _run(gated, session_factory, camera_id, BroadcastHub(), ticks=5)
+    finally:
+        camera_loop.run_inference = real_inference
+
+    assert calls == 5
+
+
 async def test_a_skipped_frame_still_reaches_viewers(
     settings, session_factory, camera_id
 ) -> None:

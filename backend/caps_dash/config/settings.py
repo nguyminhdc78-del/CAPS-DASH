@@ -100,6 +100,23 @@ class Settings(BaseSettings):
     # asleep indefinitely. This bounds how long the system can be wrong.
     motion_force_interval_s: float = 10.0
 
+    # A floor on the gap between two inference runs, independent of how often
+    # the camera is polled.
+    #
+    # `poll_interval_s` cannot serve this purpose: it also sets how often a
+    # frame is published to the browser, so raising it to slow the detector
+    # down makes the live view stutter at the same time. A 30 fps RTSP camera
+    # wants a fast tick for a smooth picture and a slow one for the detector,
+    # and those are different numbers.
+    #
+    # Composes with the change gate rather than replacing it: the gate answers
+    # "has anything changed?", this answers "is it too soon to look again?",
+    # and inference runs only when both say yes. `motion_force_interval_s`
+    # still overrides both, so a scene that drifts is still re-examined.
+    # 0 disables it, which is the default - it only matters on a source fast
+    # enough for the detector to become the bottleneck.
+    min_inference_interval_s: float = 0.0
+
     # A live snapshot is a real request to the camera, and the ROI editor is
     # opened repeatedly while drawing. Reuse the worker's still for this long
     # before going back to the device.

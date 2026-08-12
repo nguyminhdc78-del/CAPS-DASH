@@ -28,6 +28,7 @@ from ..services.slot_state_service import (
     record_camera_seen,
 )
 from ..vision.domain import count_detections_per_slot, occupied_slot_ids
+from ..vision.frame_change_gate import GateDecision
 from .camera_context import CameraContext
 from .inference_runner import run_inference
 
@@ -53,6 +54,10 @@ async def run_camera_loop(
     log = logger.bind(camera_id=context.camera_id, camera_code=context.config.code)
     seq = 0
     ticks = 0
+    # Local to the loop, not the context: it describes this run of the
+    # detector, and a reload that swaps the context must not reset it - the
+    # detector did still run when it ran.
+    last_inference_at: float | None = None
 
     while not stop.is_set() and (max_ticks is None or ticks < max_ticks):
         ticks += 1
@@ -71,7 +76,7 @@ async def run_camera_loop(
 
         decision = context.change_gate.evaluate(frame.image)
 
-        if not decision.infer:
+        if not decision.infer or _too_soon_to_infer(decision, last_inference_at, context):
             # The picture has not changed since the detector last looked, so
             # the previous result still describes it. Publishing that result
             # with this frame is honest - they are the same scene - and the
@@ -103,6 +108,7 @@ async def run_camera_loop(
             continue
 
         context.change_gate.mark_inferred(frame.image)
+        last_inference_at = time.monotonic()
         log.debug("inference_ran", reason=decision.reason, difference=round(decision.difference, 2))
 
         fitted = context.slot_map.fit_to_frame(outcome.frame_w, outcome.frame_h)
@@ -180,6 +186,26 @@ def _publish_unchanged(context: CameraContext, jpeg: bytes, seq: int) -> None:
     header = context.build_header(outcome, context.last_states, seq, fitted)
     header["inference_skipped"] = True
     context.hub.publish(context.camera_id, encode_frame_message(header, jpeg))
+
+
+def _too_soon_to_infer(
+    decision: GateDecision, last_inference_at: float | None, context: CameraContext
+) -> bool:
+    """Whether a change-triggered inference should wait for the rate floor.
+
+    Only `changed` is throttled. `first_frame` has no previous result to
+    publish instead, and `heartbeat` is precisely the bound on how long the
+    system may go on being wrong - throttling either would defeat what they
+    exist for.
+
+    The change gate's reference frame is deliberately NOT updated when this
+    returns True: the scene moved and nothing has looked at it yet, so the
+    gate must keep saying "changed" and fire the moment the floor expires.
+    """
+    minimum = context.settings.min_inference_interval_s
+    if minimum <= 0 or last_inference_at is None or decision.reason != "changed":
+        return False
+    return (time.monotonic() - last_inference_at) < minimum
 
 
 async def _handle_failed_read(

@@ -46,6 +46,7 @@ from ...observability.credential_redaction import redact_credentials
 from ...observability.logging_setup import get_logger
 from .base import Frame, FrameSource, failed_frame
 from .jpeg_utils import encode_jpeg
+from .rtsp_stream_diagnostics import StreamLagTracker
 
 logger = get_logger(__name__)
 
@@ -105,6 +106,9 @@ class RtspStreamSource(FrameSource):
         self._last_error = "stream has not connected yet"
         self._frames_seen = 0
         self._fail_streak = 0
+
+        self._lag = StreamLagTracker()
+        self._lag_s = 0.0
 
         self._stop = threading.Event()
         self._thread = threading.Thread(
@@ -193,6 +197,7 @@ class RtspStreamSource(FrameSource):
 
         produced = False
         misses = 0
+        self._lag.reset()  # a new connection is a new timeline
         while not self._stop.is_set():
             ok, image = capture.read()
             if not ok or image is None:
@@ -208,6 +213,20 @@ class RtspStreamSource(FrameSource):
                 self._latest_at = time.monotonic()
                 self._last_error = ""
             self._frames_seen += 1
+
+            # Reported rather than merely measured: "the picture looks late"
+            # is not something anyone can act on, and the growth figure says
+            # whether the reader is losing ground or holding a fixed delay.
+            report = self._lag.note_frame(capture.get(cv2.CAP_PROP_POS_MSEC))
+            if report is not None:
+                self._lag_s = report.lag_s
+                logger.info(
+                    "rtsp_stream_lag",
+                    camera_id=self._camera_id,
+                    decode_fps=round(report.decode_fps, 1),
+                    lag_s=round(report.lag_s, 2),
+                    lag_growth_s=round(report.lag_growth_s, 2),
+                )
         return produced
 
     def _open(self) -> cv2.VideoCapture | None:

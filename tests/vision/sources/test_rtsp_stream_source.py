@@ -28,6 +28,7 @@ class StubCapture:
         self.opens = opens
         self._reads = list(reads or [])
         self.released = threading.Event()
+        self._pts_ms = 0.0
 
     def isOpened(self) -> bool:
         """Named for the cv2 API this stands in for, not for PEP 8."""
@@ -42,7 +43,12 @@ class StubCapture:
         result = self._reads.pop(0)
         if isinstance(result, Exception):
             raise result
+        self._pts_ms += 1000.0 / 30.0  # a 30 fps stream, like the real camera
         return result
+
+    def get(self, prop: int) -> float:
+        """Only CAP_PROP_POS_MSEC is asked for - the lag tracker's input."""
+        return self._pts_ms
 
     def release(self) -> None:
         self.released.set()
