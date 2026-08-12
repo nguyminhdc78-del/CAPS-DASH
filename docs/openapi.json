@@ -5186,7 +5186,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Latest JPEG still, for the ROI editor",
+        "summary": "Latest JPEG still, for the ROI editor and live-view fallbacks",
         "tags": [
           "Cameras"
         ]

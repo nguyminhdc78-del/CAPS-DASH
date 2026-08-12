@@ -66,10 +66,25 @@ async function fetchAllHourlyStats(
   return items
 }
 
-export function useHourlyStatsQuery(scopeType: string, scopeKey: string, range: StatsRange) {
+/** `refetchInterval` is optional and defaults to TanStack's own "no
+ * background polling" behaviour - the statistics page's range-picker view
+ * never wants it, the overview's fixed last-24h chart does (see
+ * `dashboard-occupancy-chart.tsx`). Added here rather than duplicating
+ * `fetchAllHourlyStats` in the dashboard feature. */
+export function useHourlyStatsQuery(
+  scopeType: string,
+  scopeKey: string,
+  range: StatsRange,
+  options: { refetchInterval?: number } = {},
+) {
   return useQuery({
     queryKey: queryKeys.stats.hourly({ scopeType, scopeKey, from: range.from, to: range.to }),
     queryFn: () => fetchAllHourlyStats(scopeType, scopeKey, range),
+    // See the matching comment in `use-cameras-queries.ts`: under
+    // `exactOptionalPropertyTypes`, this key must be OMITTED (not merely
+    // `undefined`-valued) when no interval is requested, or TanStack's
+    // overload resolution fails for every caller of this hook.
+    ...(options.refetchInterval !== undefined ? { refetchInterval: options.refetchInterval } : {}),
   })
 }
 

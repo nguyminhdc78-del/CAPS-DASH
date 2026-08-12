@@ -69,7 +69,18 @@ export interface CreateCameraInput {
  */
 export type UpdateCameraInput = Partial<Omit<CreateCameraInput, 'code' | 'confidence'>>
 
-export function useCamerasQuery(params: CameraListParams = {}) {
+/** Extra `useQuery` knobs beyond the params baked into the cache key.
+ * Kept separate from `CameraListParams` because `refetchInterval`/`enabled`
+ * are read-behaviour, not part of what makes two requests "the same page" -
+ * folding them into the key would fragment the cache for callers that only
+ * differ in how often they poll the identical list (the overview's hero
+ * picker and its camera-health strip both do exactly this). */
+export interface CameraListOptions {
+  refetchInterval?: number
+  enabled?: boolean
+}
+
+export function useCamerasQuery(params: CameraListParams = {}, options: CameraListOptions = {}) {
   const search = new URLSearchParams()
   if (params.limit !== undefined) search.set('limit', String(params.limit))
   if (params.offset !== undefined) search.set('offset', String(params.offset))
@@ -78,6 +89,13 @@ export function useCamerasQuery(params: CameraListParams = {}) {
   return useQuery({
     queryKey: queryKeys.cameras.list(params),
     queryFn: () => api.get<CameraPage>(`/cameras${query ? `?${query}` : ''}`),
+    // Spread conditionally, not `refetchInterval: options.refetchInterval`:
+    // under `exactOptionalPropertyTypes`, a key present-but-`undefined`
+    // is a different type than an absent key, and TanStack's overloads only
+    // accept the latter - an always-present key breaks type inference for
+    // every caller of this hook, not just the ones passing options.
+    ...(options.refetchInterval !== undefined ? { refetchInterval: options.refetchInterval } : {}),
+    ...(options.enabled !== undefined ? { enabled: options.enabled } : {}),
   })
 }
 

@@ -34,6 +34,7 @@ from ..schemas.camera_schemas import ConnectionTestRequest, ConnectionTestRespon
 router = APIRouter(prefix="/cameras", tags=["Cameras"])
 
 AdminOnly = Depends(require_role(UserRole.ADMIN))
+SecurityOrAbove = Depends(require_role(UserRole.SECURITY))
 
 
 @router.post(
@@ -81,13 +82,17 @@ async def test_connection_saved(
 @router.get(
     "/{camera_id}/snapshot",
     response_class=Response,
-    summary="Latest JPEG still, for the ROI editor",
+    summary="Latest JPEG still, for the ROI editor and live-view fallbacks",
 )
 async def get_snapshot(
     camera_id: int,
     session: Session = Depends(get_session),
     ctx: ServiceContext = Depends(get_service_context),
-    _: CurrentUser = AdminOnly,
+    # Security, not admin. The same role can already open `WS /ws/cameras/{id}`
+    # and watch this camera continuously, so refusing them one still from that
+    # stream protects nothing - it only breaks the dashboard's fallback for
+    # every non-admin. Residents remain excluded: they see no imagery at all.
+    _: CurrentUser = SecurityOrAbove,
 ) -> Response:
     camera = camera_repository.get_or_raise(session, camera_id)
     jpeg = await camera_diagnostics_service.get_snapshot(camera=camera, ctx=ctx)

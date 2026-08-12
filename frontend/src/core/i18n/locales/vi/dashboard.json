@@ -1,0 +1,16 @@
+{
+  "title": "Tổng quan",
+  "heroTitle": "Camera trực tiếp",
+  "heroCameraSelectLabel": "Chọn camera",
+  "heroEmptyNoCamera": "Chưa có camera nào được cấu hình",
+  "heroEmptyUnavailable": "Không thể xem trước camera lúc này",
+  "heroSnapshotBadge": "Ảnh chụp nhanh",
+  "floorBarsTitle": "Theo tầng",
+  "cameraHealthTitle": "Tình trạng camera",
+  "cameraHealthEmpty": "Chưa có camera nào được cấu hình",
+  "occupancyChartTitle": "Tỉ lệ lấp đầy — 24 giờ qua",
+  "occupancyChartEmpty": "Chưa đủ dữ liệu lịch sử để vẽ biểu đồ",
+  "alertsViewAll": "Xem tất cả",
+  "updatedJustNow": "Vừa cập nhật",
+  "updatedSecondsAgo": "Cập nhật {{seconds}} giây trước"
+}

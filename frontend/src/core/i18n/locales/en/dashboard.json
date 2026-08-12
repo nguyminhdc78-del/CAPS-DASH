@@ -1,0 +1,16 @@
+{
+  "title": "Overview",
+  "heroTitle": "Live camera",
+  "heroCameraSelectLabel": "Choose camera",
+  "heroEmptyNoCamera": "No camera configured yet",
+  "heroEmptyUnavailable": "Camera preview unavailable",
+  "heroSnapshotBadge": "Snapshot",
+  "floorBarsTitle": "By floor",
+  "cameraHealthTitle": "Camera health",
+  "cameraHealthEmpty": "No cameras configured yet",
+  "occupancyChartTitle": "Occupancy — last 24 hours",
+  "occupancyChartEmpty": "Not enough history yet to chart",
+  "alertsViewAll": "View all",
+  "updatedJustNow": "Updated just now",
+  "updatedSecondsAgo": "Updated {{seconds}}s ago"
+}

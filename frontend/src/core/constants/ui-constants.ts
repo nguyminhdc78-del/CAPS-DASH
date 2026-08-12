@@ -46,6 +46,16 @@ export const KIOSK_POLL_MS = 3_000
 // seconds-relevant, and this one polls from every page at once.
 export const ALERT_BADGE_POLL_MS = 60_000
 
+// Overview page ("Tổng quan"). The camera list backs both the hero picker
+// and the health strip - a few seconds keeps a just-flipped-offline camera
+// visible promptly without hammering the list endpoint the way SUMMARY_POLL_MS
+// would (that cadence exists for slot state, which settles far faster).
+export const DASHBOARD_CAMERA_HEALTH_POLL_MS = 5_000
+// The 24h occupancy chart reads pre-aggregated hourly_stats rows, which
+// change on the order of an hour, not a few seconds - a full minute keeps it
+// current without adding load the board's YOLO workload would feel.
+export const DASHBOARD_CHART_POLL_MS = 60_000
+
 /** Slot grid reflow breakpoints: wide -> medium -> narrow column counts. */
 export const SLOT_GRID_BREAKPOINTS = {
   wide: 6,

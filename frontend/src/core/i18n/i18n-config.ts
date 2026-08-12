@@ -5,6 +5,7 @@ import enAlert from './locales/en/alert.json'
 import enAuth from './locales/en/auth.json'
 import enCamera from './locales/en/camera.json'
 import enCommon from './locales/en/common.json'
+import enDashboard from './locales/en/dashboard.json'
 import enErrors from './locales/en/errors.json'
 import enHistory from './locales/en/history.json'
 import enKiosk from './locales/en/kiosk.json'
@@ -18,6 +19,7 @@ import viAlert from './locales/vi/alert.json'
 import viAuth from './locales/vi/auth.json'
 import viCamera from './locales/vi/camera.json'
 import viCommon from './locales/vi/common.json'
+import viDashboard from './locales/vi/dashboard.json'
 import viErrors from './locales/vi/errors.json'
 import viHistory from './locales/vi/history.json'
 import viKiosk from './locales/vi/kiosk.json'
@@ -47,6 +49,7 @@ const resources = {
     camera: viCamera,
     slot: viSlot,
     alert: viAlert,
+    dashboard: viDashboard,
     system: viSystem,
     errors: viErrors,
     user: viUser,
@@ -62,6 +65,7 @@ const resources = {
     camera: enCamera,
     slot: enSlot,
     alert: enAlert,
+    dashboard: enDashboard,
     system: enSystem,
     errors: enErrors,
     user: enUser,
