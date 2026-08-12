@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 
 from caps_dash.vision.sources import rtsp_stream_source
+from caps_dash.vision.sources.rtsp_endpoint_probe import EndpointState, ProbeResult
 from caps_dash.vision.sources.rtsp_stream_source import RtspStreamSource, _capture_options
 
 
@@ -54,9 +55,16 @@ class StubCapture:
 
 
 def install(
-    monkeypatch: pytest.MonkeyPatch, make: Callable[[int], StubCapture]
+    monkeypatch: pytest.MonkeyPatch,
+    make: Callable[[int], StubCapture],
+    *,
+    endpoint: EndpointState = EndpointState.REACHABLE,
 ) -> list[StubCapture]:
-    """Build a fresh stub per `VideoCapture(...)`; returns the ones created."""
+    """Build a fresh stub per `VideoCapture(...)`; returns the ones created.
+
+    The endpoint probe is stubbed too: it opens a real socket, and a unit test
+    must not depend on what `camera.invalid` does on the machine running it.
+    """
     created: list[StubCapture] = []
     lock = threading.Lock()
 
@@ -67,6 +75,9 @@ def install(
             return capture
 
     monkeypatch.setattr(rtsp_stream_source.cv2, "VideoCapture", factory)
+    monkeypatch.setattr(
+        rtsp_stream_source, "probe", lambda *_a, **_k: ProbeResult(endpoint, str(endpoint))
+    )
     return created
 
 
@@ -254,3 +265,22 @@ def test_close_stops_the_refresher(monkeypatch: pytest.MonkeyPatch) -> None:
     time.sleep(0.2)
 
     assert source.frames_seen == settled
+
+
+def test_a_refused_port_never_reaches_the_decoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A camera that is on the network but not streaming is answered in
+    milliseconds by a TCP connect. Handing that to FFMPEG instead costs the
+    full connect timeout and reports it as an indistinguishable failure."""
+    created = install(
+        monkeypatch, lambda _i: StubCapture(value=120), endpoint=EndpointState.REFUSED
+    )
+    source = RtspStreamSource(1, "rtsp://camera.invalid/live", 2.0)
+    try:
+        result = source.read()
+
+        assert not result.ok
+        assert created == []
+    finally:
+        source.close()

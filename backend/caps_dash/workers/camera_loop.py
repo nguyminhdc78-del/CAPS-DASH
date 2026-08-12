@@ -22,14 +22,10 @@ from structlog.stdlib import BoundLogger
 
 from ..observability.logging_setup import get_logger
 from ..realtime.frame_protocol import encode_frame_message
-from ..services.slot_state_service import (
-    persist_state_changes,
-    record_camera_error,
-    record_camera_seen,
-)
+from ..services.slot_state_service import persist_state_changes, record_camera_error
 from ..vision.domain import count_detections_per_slot, occupied_slot_ids
-from ..vision.frame_change_gate import GateDecision
 from .camera_context import CameraContext
+from .camera_tick_policy import too_soon_to_infer, touch_health_if_due
 from .inference_runner import run_inference
 
 logger = get_logger(__name__)
@@ -58,6 +54,7 @@ async def run_camera_loop(
     # detector, and a reload that swaps the context must not reset it - the
     # detector did still run when it ran.
     last_inference_at: float | None = None
+    last_health_at: float | None = None
 
     while not stop.is_set() and (max_ticks is None or ticks < max_ticks):
         ticks += 1
@@ -76,7 +73,7 @@ async def run_camera_loop(
 
         decision = context.change_gate.evaluate(frame.image)
 
-        if not decision.infer or _too_soon_to_infer(decision, last_inference_at, context):
+        if not decision.infer or too_soon_to_infer(decision, last_inference_at, context):
             # The picture has not changed since the detector last looked, so
             # the previous result still describes it. Publishing that result
             # with this frame is honest - they are the same scene - and the
@@ -88,6 +85,10 @@ async def run_camera_loop(
             context.metrics.record_success(
                 process_ms=0.0, tick_ms=(time.perf_counter() - tick_started) * 1000.0
             )
+            # A frame arrived, so the camera is alive - whether or not the
+            # detector chose to look at it.
+            width, height = context.last_frame_size
+            last_health_at = await touch_health_if_due(context, width, height, last_health_at)
             await _sleep_remaining(tick_started, context.config.poll_interval_s, stop)
             continue
 
@@ -151,22 +152,11 @@ async def run_camera_loop(
                 ),
             )
 
-        if seq == 1 or seq % _HEALTH_EVERY_TICKS == 0:
-            await context.loop.run_in_executor(
-                context.db_pool,
-                record_camera_seen,
-                context.session_factory,
-                context.camera_id,
-                outcome.frame_w,
-                outcome.frame_h,
-            )
+        last_health_at = await touch_health_if_due(
+            context, outcome.frame_w, outcome.frame_h, last_health_at
+        )
 
         await _sleep_remaining(tick_started, context.config.poll_interval_s, stop)
-
-
-# Status is not history. Writing it every tick would defeat the point of only
-# persisting changes, so it lands roughly once a minute at a 3s poll.
-_HEALTH_EVERY_TICKS = 20
 
 
 def _publish_unchanged(context: CameraContext, jpeg: bytes, seq: int) -> None:
@@ -186,26 +176,6 @@ def _publish_unchanged(context: CameraContext, jpeg: bytes, seq: int) -> None:
     header = context.build_header(outcome, context.last_states, seq, fitted)
     header["inference_skipped"] = True
     context.hub.publish(context.camera_id, encode_frame_message(header, jpeg))
-
-
-def _too_soon_to_infer(
-    decision: GateDecision, last_inference_at: float | None, context: CameraContext
-) -> bool:
-    """Whether a change-triggered inference should wait for the rate floor.
-
-    Only `changed` is throttled. `first_frame` has no previous result to
-    publish instead, and `heartbeat` is precisely the bound on how long the
-    system may go on being wrong - throttling either would defeat what they
-    exist for.
-
-    The change gate's reference frame is deliberately NOT updated when this
-    returns True: the scene moved and nothing has looked at it yet, so the
-    gate must keep saying "changed" and fire the moment the floor expires.
-    """
-    minimum = context.settings.min_inference_interval_s
-    if minimum <= 0 or last_inference_at is None or decision.reason != "changed":
-        return False
-    return (time.monotonic() - last_inference_at) < minimum
 
 
 async def _handle_failed_read(

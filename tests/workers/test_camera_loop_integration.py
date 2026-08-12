@@ -369,6 +369,29 @@ async def test_the_heartbeat_forces_inference_on_a_static_scene(
     assert calls == 5
 
 
+async def test_a_camera_whose_scene_never_changes_still_looks_alive(
+    settings, session_factory, camera_id
+) -> None:
+    """Health means "frames are arriving", not "the detector ran".
+
+    Tying it to inference made a camera watching a static scene - precisely
+    the case the change gate exists to skip - report itself offline while it
+    was working perfectly.
+    """
+    gated = settings.model_copy(
+        update={"motion_change_threshold": 10_000.0, "motion_force_interval_s": 3600.0}
+    )
+    await _run(gated, session_factory, camera_id, BroadcastHub(), ticks=6)
+
+    with session_factory() as session:
+        camera = session.get(Camera, camera_id)
+        assert camera is not None
+        # One inference on the first frame, then every tick skipped - and the
+        # camera is still marked as seen.
+        assert camera.last_seen_at is not None
+        assert camera.last_error == ""
+
+
 async def test_the_rate_floor_keeps_the_detector_off_a_fast_camera(
     settings, session_factory, camera_id
 ) -> None:

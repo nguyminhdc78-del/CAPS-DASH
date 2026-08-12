@@ -54,6 +54,7 @@ from ...observability.credential_redaction import redact_credentials
 from ...observability.logging_setup import get_logger
 from .base import Frame, FrameSource, failed_frame
 from .jpeg_utils import encode_jpeg
+from .rtsp_endpoint_probe import EndpointState, probe
 
 logger = get_logger(__name__)
 
@@ -70,6 +71,11 @@ FRAMES_PER_CONNECTION = 2
 
 INITIAL_BACKOFF_S = 1.0
 MAX_BACKOFF_S = 30.0
+
+# Retry gap while the camera is merely idle - reachable, but not streaming.
+# Short on purpose: the check costs milliseconds, and an operator who has just
+# switched the camera on should not wait out a 30 s backoff to see a picture.
+IDLE_RETRY_S = 2.0
 
 
 def _capture_options(timeout_s: float) -> str:
@@ -180,6 +186,19 @@ class RtspStreamSource(FrameSource):
         backoff = INITIAL_BACKOFF_S
         while not self._stop.is_set():
             started = time.perf_counter()
+
+            # Milliseconds to learn what FFMPEG would take the full connect
+            # timeout to report, and less clearly.
+            reachable = probe(self._url, min(self._timeout_s, 2.0))
+            if reachable.state is not EndpointState.REACHABLE:
+                self._record_error(reachable.detail)
+                wait = IDLE_RETRY_S if reachable.worth_retrying_soon else backoff
+                if self._stop.wait(wait):
+                    return
+                if not reachable.worth_retrying_soon:
+                    backoff = min(backoff * 2, MAX_BACKOFF_S)
+                continue
+
             try:
                 fetched = self._fetch_one()
             except Exception as exc:
