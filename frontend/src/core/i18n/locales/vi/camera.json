@@ -20,7 +20,7 @@
   "addCamera": "Thêm camera",
   "slotMap": "Sơ đồ ô đỗ",
   "sourcePath": "Đường dẫn nguồn",
-  "sourceTypeEsp32camHttp": "ESP32-CAM (HTTP)",
+  "sourceTypeEsp32camHttp": "Ảnh HTTP (định kỳ)",
   "sourceTypeImageFolder": "Thư mục ảnh",
   "sourceTypeVideoFile": "Tệp video",
   "sourceTypeFake": "Giả lập (không cần phần cứng)",

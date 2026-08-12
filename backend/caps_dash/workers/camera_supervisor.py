@@ -18,6 +18,7 @@ from ..realtime.broadcast_hub import BroadcastHub
 from ..services import camera_control_service
 from .camera_context import CameraContext, build_context
 from .camera_loop import run_camera_loop
+from .camera_start_stagger import stagger_offsets
 from .reload_signals import ReloadSignals
 
 logger = get_logger(__name__)
@@ -99,11 +100,15 @@ class CameraSupervisor:
 
     async def reconcile(self) -> None:
         """Match running tasks to the enabled cameras in the database."""
-        wanted = set(self._enabled_camera_ids())
+        enabled = self._enabled_cameras()
+        wanted = set(enabled)
         running = set(self._tasks)
 
-        for camera_id in wanted - running:
-            self._spawn(camera_id)
+        offsets = stagger_offsets(
+            wanted - running, fleet_size=len(wanted), poll_interval_s=enabled
+        )
+        for camera_id, offset_s in offsets.items():
+            self._spawn(camera_id, offset_s)
         for camera_id in running - wanted:
             await self._cancel(camera_id)
 
@@ -144,14 +149,24 @@ class CameraSupervisor:
 
     # --- internals -----------------------------------------------------------
 
-    def _enabled_camera_ids(self) -> list[int]:
+    def _enabled_cameras(self) -> dict[int, float]:
+        """Enabled camera ids and their poll intervals, in one query.
+
+        The interval comes back alongside the id rather than in a second
+        lookup per camera: staggering needs it, and an N+1 here would run on
+        every reconcile, which fires after every camera create, delete or
+        enable/disable.
+        """
         try:
             with session_scope(self._session_factory) as session:
-                return list(
-                    session.execute(
-                        select(Camera.id).where(Camera.is_enabled.is_(True)).order_by(Camera.id)
-                    ).scalars()
-                )
+                return {
+                    camera_id: poll_interval_s
+                    for camera_id, poll_interval_s in session.execute(
+                        select(Camera.id, Camera.poll_interval_s)
+                        .where(Camera.is_enabled.is_(True))
+                        .order_by(Camera.id)
+                    )
+                }
         except OperationalError:
             # Almost always a fresh install where migrations have not been run.
             # Serving with no cameras beats refusing to start: the operator can
@@ -161,11 +176,11 @@ class CameraSupervisor:
                 "camera_table_unavailable",
                 detail="cannot read the cameras table; run `caps-dash migrate`",
             )
-            return []
+            return {}
 
-    def _spawn(self, camera_id: int) -> None:
+    def _spawn(self, camera_id: int, offset_s: float = 0.0) -> None:
         task = self._loop.create_task(
-            self._supervise(camera_id), name=f"camera-{camera_id}"
+            self._supervise(camera_id, offset_s), name=f"camera-{camera_id}"
         )
         self._tasks[camera_id] = task
 
@@ -181,8 +196,15 @@ class CameraSupervisor:
         self._reload_signals.forget(camera_id)
         logger.info("camera_stopped", camera_id=camera_id)
 
-    async def _supervise(self, camera_id: int) -> None:
+    async def _supervise(self, camera_id: int, offset_s: float = 0.0) -> None:
         """Keep one camera's loop alive, backing off between crashes."""
+        if offset_s:
+            # Once, before the retry loop - never inside it. A camera that
+            # crashes and restarts has its own backoff; re-applying the
+            # stagger there would make a flapping camera drift further from
+            # its slot on every restart.
+            await asyncio.sleep(offset_s)
+
         backoff = INITIAL_BACKOFF_S
 
         while not self._stop.is_set():

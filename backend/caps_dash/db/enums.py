@@ -36,8 +36,11 @@ class CameraSourceType(StrEnum):
     hardware on hand, so development, the demo and CI all depend on them.
     """
 
-    # Polls one still per tick. Simple, and the right shape when frames are
-    # wanted every few seconds.
+    # Polls one still per tick from any device serving a JPEG per GET. Simple,
+    # and the right shape when frames are wanted every few seconds - which is
+    # the primary path here: the MaixCam on the USB-C link answers
+    # `GET /snapshot`. The value is named after the first device to use it, an
+    # ESP32-CAM; the contract it describes is not vendor-specific.
     ESP32CAM_HTTP = "esp32cam_http"
     # Holds an MJPEG connection open and reads the newest frame from memory.
     # Measured on the real hardware: a still costs ~74 ms inside `read()`

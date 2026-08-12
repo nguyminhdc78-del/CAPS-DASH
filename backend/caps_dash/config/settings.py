@@ -68,16 +68,66 @@ class Settings(BaseSettings):
     # --- Vision pipeline ---------------------------------------------------
     detector_backend: Literal["onnx", "ultralytics", "fake"] = "onnx"
     model_path: Path = REPO_ROOT / "models" / "yolo-vehicle.onnx"
-    # One worker, one model in RAM. On a QRB2210 sharing its CPU with the API,
-    # the SPA and SQLite, this is the correct default rather than a placeholder.
+    # How many inferences may run at once - NOT how many threads one inference
+    # uses; that is `inference_threads` below, and confusing the two has
+    # already produced one wrong conclusion. One worker means one detector
+    # instance and one model in RAM. On a QRB2210 sharing its CPU with the API,
+    # the SPA and SQLite, this is a correctness constraint rather than a
+    # performance knob: raising it loads a second model and buys contention.
+    # Do not raise it to fit a tick budget - raise the tick instead.
     inference_pool_size: int = 1
+    # Threads onnxruntime may use inside ONE inference (`intra_op_num_threads`;
+    # `inter_op` is pinned to 1). 0 means "decide for yourself", which on a
+    # four-core board means all four.
+    #
+    # The cap was introduced because something else needed those cores
+    # continuously: an RTSP camera sending HEVC runs a four-thread FFMPEG
+    # decoder in the same process, and measured on the board the two together
+    # pinned it at 325% CPU of 400% available. The decoder was the one that
+    # lost - 13-15 fps against a 30 fps camera, backlog on the camera's side,
+    # 36 session resyncs in one sixteen-minute window.
+    #
+    # That decoder is no longer on the primary path: snapshot polling decodes
+    # one small JPEG per tick instead of a continuous stream, so nothing is
+    # left to starve and the cap has no reason to stay where it was.
+    #
+    # Measured on the board 2026-08-12, 50 runs per setting on a real camera
+    # frame at 640x640, service stopped so nothing else held a core:
+    #
+    #     threads   mean     speedup
+    #     2         837 ms   1.00x
+    #     3         631 ms   1.32x
+    #     4         533 ms   1.57x
+    #
+    # Sublinear, as expected, and still worth taking: raising this cannot make
+    # two inferences run at once (that is `inference_pool_size`, which stays
+    # 1), it makes each one finish sooner - which is exactly what the
+    # serialized budget needs. 3 cameras x 533 ms is 1.60 s against a 2.0 s
+    # tick and fits; at 2 threads it was 2.51 s and did not.
+    #
+    # 4 because the target board has four cores and one inference runs at a
+    # time. On a host with fewer cores, lower it to match - oversubscribing
+    # intra-op threads costs scheduling overhead and buys nothing.
+    inference_threads: int = 4
     inference_input_size: int = 640
     detector_confidence: float = 0.25
     # The reference project's own config notes record that 1.0s x 3 flickered
     # and that a real deployment wants roughly 3.0s x 4.
+    #
+    # Deliberately left at 3.0 rather than retuned to the MaixCam's 2.0: this
+    # is the fallback for a generic slow HTTP camera, and one device is not a
+    # reason to move it. The 2.0 s cadence lives on the camera row and in the
+    # dashboard's per-source-type default instead.
     default_poll_interval_s: float = 3.0
     default_vote_window: int = 5
     default_vote_threshold: int = 4
+    # A timeout guards against a wedged camera, not a slow one, so it wants
+    # headroom over the worst case rather than a tight fit around the median.
+    # 5.0 is the pre-existing default and has not been re-derived for the
+    # MaixCam - that wants measured p90 x 3, rounded up, and the latency
+    # measurement is still outstanding (phase-01). Do not tighten it to match
+    # a fast link: `camera_fail_streak_offline` below already requires three
+    # consecutive failures before a camera is called offline.
     camera_timeout_s: float = 5.0
     camera_fail_streak_offline: int = 3
     # Parked cars do not move, so most frames are the same picture and
@@ -97,8 +147,16 @@ class Settings(BaseSettings):
     motion_change_threshold: float = 8.0
     # ...and inferred anyway this often regardless, so slow drift - dusk, a
     # light switched on, auto-exposure creeping - cannot keep the detector
-    # asleep indefinitely. This bounds how long the system can be wrong.
-    motion_force_interval_s: float = 10.0
+    # asleep indefinitely. This bounds how long the system can be wrong when
+    # the change gate misses a real change.
+    #
+    # 30 s, not 10. At the 0.2 s streaming tick 10 s was 50 ticks between
+    # forced runs; at a 2 s polling tick it is 5, so every camera force-infers
+    # constantly and competes with genuine change-triggered runs inside a
+    # budget that is already tight. A parked car does not need 10 s bounding.
+    # This is a deliberate trade of detection latency for headroom, not a
+    # free win - see `docs/deployment-guide.md`.
+    motion_force_interval_s: float = 30.0
 
     # A floor on the gap between two inference runs, independent of how often
     # the camera is polled.
@@ -112,9 +170,18 @@ class Settings(BaseSettings):
     # Composes with the change gate rather than replacing it: the gate answers
     # "has anything changed?", this answers "is it too soon to look again?",
     # and inference runs only when both say yes. `motion_force_interval_s`
-    # still overrides both, so a scene that drifts is still re-examined.
-    # 0 disables it, which is the default - it only matters on a source fast
-    # enough for the detector to become the bottleneck.
+    # still overrides both, so a scene that drifts is still re-examined. 0
+    # disables it.
+    #
+    # 0 by default now that the primary path polls. The floor existed for the
+    # 0.2 s streaming tick, where a scene that kept changing ran the detector
+    # back to back for as long as it did; the measured 3.54 -> 0.83 load
+    # average that justified 1.5 was taken at that tick and does not transfer
+    # to a 2 s one. At any tick >= 1.5 s the floor is inert anyway - it only
+    # gates `reason == "changed"` (`camera_tick_policy.py`), and the gap
+    # between two same-camera change-triggered runs is already bounded below
+    # by the tick itself. 0 says that plainly rather than leaving a number
+    # that looks tuned. Kept as a lever for any future fast source.
     min_inference_interval_s: float = 0.0
 
     # A live snapshot is a real request to the camera, and the ROI editor is

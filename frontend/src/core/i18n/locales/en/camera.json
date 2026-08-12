@@ -20,7 +20,7 @@
   "addCamera": "Add camera",
   "slotMap": "Slot map",
   "sourcePath": "Source path",
-  "sourceTypeEsp32camHttp": "ESP32-CAM (HTTP)",
+  "sourceTypeEsp32camHttp": "HTTP snapshot (polled)",
   "sourceTypeImageFolder": "Image folder",
   "sourceTypeVideoFile": "Video file",
   "sourceTypeFake": "Simulated (no hardware)",

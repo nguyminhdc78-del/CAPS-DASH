@@ -1,0 +1,11 @@
+# Maix APP descriptor. Copied to /maixapp/apps/http_snapshot/app.yaml.
+# `id` is what /maixapp/auto_start.txt names, so the two must agree exactly.
+id: http_snapshot
+name: HTTP Snapshot
+name[zh]: HTTP 快照
+version: 1.0.0
+author: CAPS-DASH
+desc: Serves one JPEG per GET /snapshot on port 8080 for the CAPS-DASH backend.
+desc[zh]: 每次 GET /snapshot 返回一张 JPEG，端口 8080。
+files:
+  - main.py

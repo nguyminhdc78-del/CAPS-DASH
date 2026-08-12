@@ -1,8 +1,14 @@
-"""Pulls a JPEG snapshot from an ESP32-CAM over HTTP.
+"""Pulls a JPEG snapshot over HTTP from any device serving one still per GET.
 
-The reference firmware serves `GET /anh` - roughly 9 KB of JPEG at 640x480,
-polled every 1-3 s. On weak basement WiFi the body can arrive truncated while
-the HTTP layer still reports 200 OK; see `jpeg_utils.decode_jpeg` for the
+The contract is the whole interface: one request, one complete JPEG, a few KB
+at 640x480, polled every 1-3 s. Two devices satisfy it here - the MaixCam
+running `deploy/maixcam/http_snapshot_main.py` on the USB-C link, which is the
+primary path, and an ESP32-CAM serving `GET /anh`, which is where the type is
+named after and still works.
+
+A body can arrive truncated while the HTTP layer still reports 200 OK - the
+original case was weak basement WiFi, and it stays possible on any link that
+can drop a connection mid-response. See `jpeg_utils.decode_jpeg` for the
 explicit check that catches it.
 """
 

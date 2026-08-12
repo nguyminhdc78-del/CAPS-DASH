@@ -116,6 +116,42 @@ def test_absurdly_small_body_is_rejected_before_decoding() -> None:
     assert "body size" in (frame.error or "")
 
 
+def test_absurdly_large_body_is_rejected_before_decoding() -> None:
+    """The other half of the bound, and the one that protects the board.
+
+    A misconfigured or hostile device answering with a stream instead of a
+    still must be refused on its Content-Length, not decoded first - the box
+    running this shares four cores with the API, the SPA and SQLite.
+    """
+    oversized = b"\xff\xd8\xff" + b"\x00" * 2_000_000
+    source = esp32_source_with(lambda _request: httpx.Response(200, content=oversized))
+
+    frame = source.read()
+
+    assert frame.ok is False
+    assert "body size" in (frame.error or "")
+
+
+def test_a_stale_frame_reported_by_the_camera_is_a_failure() -> None:
+    """The MaixCam answers 503 when its capture thread has stopped producing.
+
+    That is the whole point of the device-side staleness guard: without it the
+    camera would serve its last good picture behind a 200 forever and this
+    source would decode it happily, so the dashboard would report a healthy
+    camera showing a frozen scene. The 503 has to land as a failure here for
+    the fail-streak to reach `camera_fail_streak_offline`.
+    """
+    source = esp32_source_with(
+        lambda _request: httpx.Response(503, text="stale frame: 12.4s old")
+    )
+
+    frame = source.read()
+
+    assert frame.ok is False
+    assert frame.image is None
+    assert source.fail_streak == 1
+
+
 def test_fail_streak_counts_up_then_resets_on_success() -> None:
     """What phase 06 compares against to declare a camera offline."""
     responses = [httpx.Response(500), httpx.Response(500), httpx.Response(200, content=real_jpeg())]

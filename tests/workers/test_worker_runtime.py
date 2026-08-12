@@ -268,14 +268,14 @@ def test_a_success_clears_the_failure_streak() -> None:
     metrics.record_failure("timeout")
     assert metrics.fail_streak == 2
 
-    metrics.record_success(process_ms=40.0, tick_ms=100.0)
+    metrics.record_success(tick_ms=100.0)
     assert metrics.fail_streak == 0
     assert metrics.frames_ok == 1
 
 
 def test_a_camera_is_offline_after_the_configured_streak() -> None:
     metrics = CameraMetrics()
-    metrics.record_success(process_ms=1.0, tick_ms=1.0)
+    metrics.record_success(tick_ms=1.0)
     for _ in range(3):
         metrics.record_failure("no answer")
     assert not metrics.is_online(offline_after=3)
@@ -287,7 +287,25 @@ def test_a_camera_never_seen_is_not_online() -> None:
 
 def test_average_process_time_smooths_a_single_slow_frame() -> None:
     metrics = CameraMetrics()
-    metrics.record_success(process_ms=40.0, tick_ms=100.0)
-    metrics.record_success(process_ms=60.0, tick_ms=100.0)
+    metrics.record_inference(40.0)
+    metrics.record_inference(60.0)
     assert metrics.average_process_ms == pytest.approx(50.0)
+
+
+def test_process_time_averages_over_detector_runs_not_over_ticks() -> None:
+    """A tick that starts no detection must not drag the average down.
+
+    Averaging over ticks made the figure meaningless as soon as the change
+    gate started skipping frames: a camera watching a still scene fed in a
+    zero per tick and reported a fraction of what a run actually costs. Worse
+    on an RTSP camera, where the tick is deliberately far faster than the
+    detector.
+    """
+    metrics = CameraMetrics()
+    metrics.record_inference(600.0)
+    for _ in range(20):
+        metrics.record_success(tick_ms=5.0)
+
+    assert metrics.average_process_ms == pytest.approx(600.0)
+    assert metrics.frames_ok == 20
 

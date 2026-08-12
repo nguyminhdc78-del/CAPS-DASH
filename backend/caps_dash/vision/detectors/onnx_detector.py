@@ -28,6 +28,31 @@ logger = get_logger(__name__)
 DEFAULT_PROVIDERS = ["CPUExecutionProvider"]
 
 
+def _session_options(threads: int) -> ort.SessionOptions | None:
+    """Bound how much of the machine one inference may take.
+
+    `None` leaves onnxruntime to decide, which means every core. That is the
+    right answer only if nothing else needs one. The cap was introduced when
+    something did: an RTSP camera ran a four-thread HEVC decoder in the same
+    process and starved when the detector took what it could. That is now the
+    historical reason - the primary path polls JPEG stills and decodes nothing
+    continuously - and the cap survives it as a plain resource bound on a board
+    that also serves the API, the SPA and SQLite. See
+    `Settings.inference_threads`.
+
+    `inter_op` is pinned to 1 regardless: the graph is one sequential model,
+    so a second operator-level thread has nothing to run in parallel and only
+    adds a scheduler to contend with.
+    """
+    if threads <= 0:
+        return None
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = threads
+    options.inter_op_num_threads = 1
+    options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    return options
+
+
 class OnnxVehicleDetector(VehicleDetector):
     """Runs a YOLO `.onnx` export via onnxruntime."""
 
@@ -37,6 +62,7 @@ class OnnxVehicleDetector(VehicleDetector):
         input_size: int = 640,
         confidence: float = 0.25,
         providers: list[str] | None = None,
+        threads: int = 0,
     ) -> None:
         super().__init__(confidence)
         if not model_path.is_file():
@@ -50,7 +76,9 @@ class OnnxVehicleDetector(VehicleDetector):
         self._model_path = model_path
         self._input_size = input_size
         self._session: ort.InferenceSession | None = ort.InferenceSession(
-            str(model_path), providers=providers or DEFAULT_PROVIDERS
+            str(model_path),
+            sess_options=_session_options(threads),
+            providers=providers or DEFAULT_PROVIDERS,
         )
         self._input_name = self._session.get_inputs()[0].name
 

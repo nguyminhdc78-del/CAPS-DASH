@@ -31,6 +31,34 @@ const SOURCE_TYPE_LABEL_KEYS: Record<CameraSourceType, string> = {
   fake: 'camera:sourceTypeFake',
 }
 
+/**
+ * The poll interval to start a new camera on, per source type.
+ *
+ * `poll_interval_s` sets how often a frame reaches the browser, and it also
+ * paces the detector - one tick, at most one inference. A polled source is
+ * fetched over the network every tick and each tick costs a real request, a
+ * transfer and a decode; two seconds is what the reference camera and the
+ * detector budget together support, and it is the live-view rate an operator
+ * should expect from one.
+ *
+ * A streaming source has already decoded the newest frame into memory, so a
+ * tick is only a memory read and costs almost nothing. Left at three seconds
+ * its live view updates once every three seconds and shows a picture up to
+ * three seconds old, which is what "the camera is laggy" usually turns out to
+ * be - hence 0.2.
+ *
+ * Only the default for a NEW camera. It is stored per camera and editable,
+ * and changing this map never touches an existing row.
+ */
+const DEFAULT_POLL_INTERVAL_S: Record<CameraSourceType, number> = {
+  esp32cam_http: 2,
+  esp32cam_stream: 0.2,
+  rtsp: 0.2,
+  image_folder: 3,
+  video_file: 3,
+  fake: 3,
+}
+
 /** See `user-form-drawer.tsx` for why this reads `details.fields` directly. */
 function applyFieldErrors(form: FormInstance, error: unknown): boolean {
   if (!(error instanceof ApiError) || error.code !== 'VALIDATION_FAILED') return false
@@ -143,7 +171,7 @@ export function CameraFormDrawer({
         initialValues={{
           floor: 'B1',
           source_type: 'esp32cam_http',
-          poll_interval_s: 3,
+          poll_interval_s: DEFAULT_POLL_INTERVAL_S['esp32cam_http'],
           vote_window: 5,
           vote_threshold: 4,
           confidence: 0.25,
@@ -172,6 +200,20 @@ export function CameraFormDrawer({
         <Form.Item name="source_type" label={t('camera:sourceType')} rules={[{ required: true }]}>
           <Select
             options={SOURCE_TYPES.map((type) => ({ value: type, label: t(SOURCE_TYPE_LABEL_KEYS[type]) }))}
+            onChange={(type: CameraSourceType) => {
+              // Follows the source type rather than being fixed, because the
+              // right tick for a stream and for a polled camera differ by an
+              // order of magnitude. Still shown in the field below, so an
+              // operator who wants a different number can just type it.
+              //
+              // Only when creating. On an existing camera the stored interval
+              // is a decision somebody made, and switching source type is
+              // something an operator legitimately does - the documented RTSP
+              // rollback is exactly that. Overwriting it there would retune a
+              // live camera by up to 10x without anyone touching the field.
+              if (isEditing) return
+              form.setFieldValue('poll_interval_s', DEFAULT_POLL_INTERVAL_S[type])
+            }}
           />
         </Form.Item>
 
