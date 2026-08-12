@@ -18,7 +18,7 @@ from ..db.types import utc_now
 from ..errors.exceptions import NotFoundError
 from ..realtime.broadcast_hub import BroadcastHub
 from ..realtime.frame_header import build_frame_header
-from ..vision.domain import Slot, SlotMap, SlotMapFilter, build_filter
+from ..vision.domain import Slot, SlotMap, SlotMapFilter, SlotState, build_filter
 from ..vision.frame_change_gate import FrameChangeGate
 from ..vision.sources.base import FrameSource
 from ..vision.sources.source_factory import build_source
@@ -168,6 +168,29 @@ def load_slot_map(session: Session, config: CameraConfig) -> SlotMap:
     )
 
 
+def load_persisted_states(session: Session, config: CameraConfig) -> dict[str, SlotState]:
+    """What the database already believes about this camera's slots.
+
+    Used to seed the `StateTracker` so that restarting the process does not
+    look like every slot changing at once. Rows whose stored value is not a
+    state this build understands are skipped rather than raised on: an
+    unreadable value would otherwise crash `build_context` and take the camera
+    off the air permanently, which is far worse than one extra history row.
+    """
+    rows = session.execute(
+        select(ParkingSlot.code, ParkingSlot.current_state).where(
+            ParkingSlot.camera_id == config.id, ParkingSlot.is_active.is_(True)
+        )
+    ).all()
+    states: dict[str, SlotState] = {}
+    for code, stored in rows:
+        try:
+            states[code] = SlotState(str(stored))
+        except ValueError:
+            continue
+    return states
+
+
 def build_context(
     *,
     camera_id: int,
@@ -188,8 +211,16 @@ def build_context(
     with session_scope(session_factory) as session:
         config = load_camera_config(session, camera_id)
         slot_map = load_slot_map(session, config)
+        persisted_states = load_persisted_states(session, config)
 
     source = _build_source_for(config, settings)
+
+    # Seeded, not fresh - unlike the vote filter below. The filter must forget
+    # (its votes describe a slot map that may have just been redrawn), but
+    # what the slots were last seen to contain is still true, and forgetting
+    # it is what turned every restart into a burst of phantom history rows.
+    state_tracker = StateTracker()
+    state_tracker.seed(persisted_states)
 
     return CameraContext(
         config=config,
@@ -202,6 +233,7 @@ def build_context(
         reload_signals=reload_signals,
         source=source,
         slot_map=slot_map,
+        state_tracker=state_tracker,
         vote_filter=build_filter(
             slot_map.slot_ids, config.vote_window, config.vote_threshold
         ),

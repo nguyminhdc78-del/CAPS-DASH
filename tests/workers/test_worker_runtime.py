@@ -47,9 +47,54 @@ def test_warmup_unknown_is_not_recorded_as_a_change() -> None:
     tracker = StateTracker()
     assert tracker.diff({"A1": SlotState.UNKNOWN, "A2": SlotState.UNKNOWN}) == []
 
-    # But a slot that was known and becomes unknown IS a real transition.
+
+def test_going_unknown_is_never_recorded() -> None:
+    """`SlotVoteFilter` returns UNKNOWN only before it has seen a full window
+    and never goes back to it afterwards except via `reset()` - which happens
+    when a context is rebuilt. So "became unknown" always means the process
+    restarted, never that anything happened in the car park."""
+    tracker = StateTracker()
     tracker.diff({"A1": SlotState.OCCUPIED})
-    assert len(tracker.diff({"A1": SlotState.UNKNOWN})) == 1
+
+    assert tracker.diff({"A1": SlotState.UNKNOWN}) == []
+    # And it did not clobber what the slot was last actually seen to be, so
+    # warming back up to OCCUPIED is not a change either.
+    assert tracker.diff({"A1": SlotState.OCCUPIED}) == []
+
+
+def test_seeding_makes_a_restart_write_nothing() -> None:
+    """The bug this prevents: a restart wrote `UNKNOWN -> FREE` for every slot,
+    every time, so an afternoon of deploys buried the real transitions."""
+    tracker = StateTracker()
+    tracker.seed({"A1": SlotState.FREE, "A2": SlotState.OCCUPIED})
+
+    assert tracker.diff({"A1": SlotState.UNKNOWN, "A2": SlotState.UNKNOWN}) == []
+    assert tracker.diff({"A1": SlotState.FREE, "A2": SlotState.OCCUPIED}) == []
+
+
+def test_seeding_still_reports_what_changed_while_down() -> None:
+    """The other half: seeding must not swallow a car that arrived during the
+    downtime, or `session_derivation` never opens that session."""
+    tracker = StateTracker()
+    tracker.seed({"A1": SlotState.FREE})
+
+    changes = tracker.diff({"A1": SlotState.OCCUPIED})
+
+    assert len(changes) == 1
+    assert changes[0].previous is SlotState.FREE
+    assert changes[0].new is SlotState.OCCUPIED
+
+
+def test_seeding_ignores_slots_the_database_calls_unknown() -> None:
+    """A slot never resolved yet is seeded with nothing, so its first real
+    reading is still recorded - once in its lifetime, not once per restart."""
+    tracker = StateTracker()
+    tracker.seed({"A1": SlotState.UNKNOWN})
+
+    changes = tracker.diff({"A1": SlotState.FREE})
+
+    assert len(changes) == 1
+    assert changes[0].previous is SlotState.UNKNOWN
 
 
 def test_reset_forgets_everything() -> None:
