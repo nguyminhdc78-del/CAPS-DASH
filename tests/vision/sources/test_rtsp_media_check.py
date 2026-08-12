@@ -69,11 +69,12 @@ def unauthorised_server() -> Iterator[int]:
 def test_an_empty_description_is_named_as_such(empty_sdp_server: int) -> None:
     """The measured failure. The camera answers 200 OK with a one-byte body,
     FFMPEG finds no track to set up, and its PLAY comes back `454 Session Not
-    Found` - which reads like a session bug and is not one."""
+    Found` - which reads like a session bug and is not one. The camera itself
+    was showing `APP rtsp_stream Error - app exit with code: 1` at the time."""
     message = describe_failure(f"rtsp://127.0.0.1:{empty_sdp_server}/live", 3.0)
 
     assert "not producing video" in message
-    assert "Start the live preview on the camera" in message
+    assert "its streaming app is not running" in message
     assert f"127.0.0.1:{empty_sdp_server}" in message
 
 

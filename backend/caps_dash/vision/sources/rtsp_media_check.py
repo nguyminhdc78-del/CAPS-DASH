@@ -19,9 +19,16 @@ track name (`.../live/track1`) completes all four steps against the same
 camera in the same second, which is what proves the fault is the empty
 description rather than the camera or the link.
 
-The cause is on the camera: its RTSP server is running while its video
-pipeline is not attached, so it has nothing to describe. Starting the live
-preview on the camera is the fix.
+The cause is on the camera. Confirmed on the reference unit, which showed
+its own dialogs while this was happening:
+
+    APP rtsp_stream Error - app exit with code: 1
+    Runtime need upgrade - Please upgrade runtime in 'Settings'
+
+Its RTSP frontend keeps answering after the streaming app behind it has
+exited, so the port is open, DESCRIBE succeeds, and there is nothing to
+describe. Nothing on this side can fix that, which is exactly why the message
+has to point at the camera instead of at the network.
 
 One DESCRIBE, run only when a capture has already failed - never on the
 healthy path.
@@ -64,7 +71,8 @@ def describe_failure(source_url: str, timeout_s: float) -> str:
     if not _MEDIA_LINE.search(body):
         return (
             f"camera at {where} is not producing video - it answers RTSP but its "
-            "stream description is empty. Start the live preview on the camera."
+            "stream description is empty, which means its streaming app is not "
+            "running. Check the camera's own screen for an error."
         )
     return f"camera at {where} describes a stream but the decoder could not open it"
 
