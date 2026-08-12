@@ -8,6 +8,7 @@ exist for.
 from __future__ import annotations
 
 import asyncio
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from caps_dash.realtime.frame_protocol import decode_frame_message
 from caps_dash.vision.detectors import fake_detector
 from caps_dash.vision.domain import Detection, SlotState
 from caps_dash.vision.sources.base import Frame
-from caps_dash.workers import camera_loop, inference_runner
+from caps_dash.workers import frame_publisher, inference_runner, inference_scheduler
 from caps_dash.workers.camera_context import CameraContext, build_context
 from caps_dash.workers.camera_loop import run_camera_loop
 from caps_dash.workers.camera_supervisor import CameraSupervisor
@@ -55,6 +56,12 @@ def settings(tmp_path: Path) -> Settings:
         # which is the gate's own behaviour, tested separately below, not the
         # voting behaviour these tests are about.
         motion_change_threshold=0.0,
+        # Pinned off rather than inherited: the production default is 1.5s,
+        # which exists to keep a fast RTSP tick from running the detector back
+        # to back. These tests are about the change gate and the loop's shape,
+        # and a floor measured in seconds would silence both on a 0.01s tick.
+        # The floor has its own tests further down.
+        min_inference_interval_s=0.0,
         log_json=False,
     )
 
@@ -106,8 +113,17 @@ def scripted_detector(monkeypatch: pytest.MonkeyPatch):
 
 
 async def _run(
-    settings, session_factory, camera_id, hub, ticks: int, source=None
+    settings, session_factory, camera_id, hub, ticks: int, source=None,
+    poll_interval_s: float | None = None,
 ) -> CameraContext:
+    """Drive one camera loop for a bounded number of ticks.
+
+    `poll_interval_s` overrides the camera row for tests that need the tick to
+    be slower than a detection. The loop starts detections without waiting for
+    them, so on a tick faster than the detector some ticks find it still busy -
+    correct behaviour, but it makes an exact count of detector runs depend on
+    thread scheduling rather than on the rule under test.
+    """
     loop = asyncio.get_running_loop()
     inference_pool = ThreadPoolExecutor(max_workers=1)
     db_pool = ThreadPoolExecutor(max_workers=1)
@@ -125,6 +141,8 @@ async def _run(
         )
         if source is not None:
             context.source = source
+        if poll_interval_s is not None:
+            context.config.poll_interval_s = poll_interval_s
         stop = asyncio.Event()
 
         async def rebuild(old: CameraContext) -> CameraContext:
@@ -214,33 +232,39 @@ async def test_the_published_jpeg_is_the_frame_inference_ran_on(
     assert (message.header["frame_w"], message.header["frame_h"]) == context.last_frame_size
 
 
-async def test_encoding_happens_once_per_tick_regardless_of_viewer_count(
-    settings, session_factory, camera_id, monkeypatch: pytest.MonkeyPatch
+async def test_encoding_cost_does_not_grow_with_the_number_of_viewers(
+    settings, session_factory, camera_id
 ) -> None:
     """Fan-out must cost a reference copy per viewer, never an encode.
 
-    Counted against the real loop, not against a helper the test calls itself:
-    five viewers over four ticks is four encodes, or the CPU cost of a stream
-    grows with the number of people watching - which is exactly what this
-    design refuses to do on a single-board host.
+    Counted against the real loop rather than a helper the test calls itself,
+    and measured at two viewer counts rather than against a fixed number, so
+    what is asserted is the property that matters: if the CPU cost of a stream
+    grew with the number of people watching, a single-board host would fall
+    over at the fourth viewer.
     """
-    hub = BroadcastHub()
-    for _ in range(5):
-        hub.subscribe(camera_id)
 
-    calls = 0
-    real_encode = camera_loop.encode_frame_message
+    async def encodes_with(viewers: int) -> int:
+        hub = BroadcastHub()
+        for _ in range(viewers):
+            hub.subscribe(camera_id)
 
-    def counting_encode(header: dict, jpeg: bytes) -> bytes:
-        nonlocal calls
-        calls += 1
-        return real_encode(header, jpeg)
+        calls = 0
+        real_encode = frame_publisher.encode_frame_message
 
-    monkeypatch.setattr(camera_loop, "encode_frame_message", counting_encode)
+        def counting_encode(header: dict, jpeg: bytes) -> bytes:
+            nonlocal calls
+            calls += 1
+            return real_encode(header, jpeg)
 
-    await _run(settings, session_factory, camera_id, hub, ticks=4)
+        frame_publisher.encode_frame_message = counting_encode  # type: ignore[assignment]
+        try:
+            await _run(settings, session_factory, camera_id, hub, ticks=4)
+        finally:
+            frame_publisher.encode_frame_message = real_encode  # type: ignore[assignment]
+        return calls
 
-    assert calls == 4
+    assert await encodes_with(1) == await encodes_with(5) > 0
 
 
 async def test_nothing_is_published_when_nobody_is_watching(
@@ -328,26 +352,42 @@ async def test_a_barely_changing_scene_skips_most_inferences(
     threshold of 3.0 on every third tick. Measured frame-to-frame it would be
     a constant 1.0 and the detector would never run again - which is exactly
     how a car easing into a slot over several frames would be missed.
+
+    TWO PHASES, and the count is their sum.
+
+    Warm-up first: while a slot still reads UNKNOWN the gate is not allowed to
+    skip, because "the previous result still describes this frame" is not true
+    when there is no previous result. This camera votes 2-of-3, so three
+    inferences are needed before the filter can decide anything, and ticks
+    1-3 supply them. Without that rule the filter was fed only by the
+    heartbeat and a static scene sat at UNKNOWN for minutes - measured on the
+    board at over two, which is what `still_warming_up` exists to prevent.
+
+    Then the gate takes over, and from its new reference at tick 3 the drift
+    reaches 3.0 at tick 6. Four in total: three warming up, one earned.
     """
     gated = settings.model_copy(
         update={"motion_change_threshold": 3.0, "motion_force_interval_s": 3600.0}
     )
     calls = 0
-    real_inference = camera_loop.run_inference
+    real_inference = inference_scheduler.run_inference
 
     def counting_inference(*args: object, **kwargs: object) -> object:
         nonlocal calls
         calls += 1
         return real_inference(*args, **kwargs)
 
-    camera_loop.run_inference = counting_inference
+    inference_scheduler.run_inference = counting_inference
     try:
         await _run(gated, session_factory, camera_id, BroadcastHub(), ticks=8)
     finally:
-        camera_loop.run_inference = real_inference
+        inference_scheduler.run_inference = real_inference
 
-    # Tick 1 (no reference yet), then ticks 4 and 7 as the drift reaches 3.
-    assert calls == 3
+    # Ticks 1-3 fill the vote window; then tick 6, as the drift reaches 3.
+    assert calls == 4
+    # The point of the gate, stated as a rule rather than a number: most ticks
+    # still cost 2.7 ms of comparison instead of a detection.
+    assert calls < 8
 
 
 async def test_the_heartbeat_forces_inference_on_a_static_scene(
@@ -360,18 +400,25 @@ async def test_the_heartbeat_forces_inference_on_a_static_scene(
         update={"motion_change_threshold": 3.0, "motion_force_interval_s": 0.0}
     )
     calls = 0
-    real_inference = camera_loop.run_inference
+    real_inference = inference_scheduler.run_inference
 
     def counting_inference(*args: object, **kwargs: object) -> object:
         nonlocal calls
         calls += 1
         return real_inference(*args, **kwargs)
 
-    camera_loop.run_inference = counting_inference
+    inference_scheduler.run_inference = counting_inference
     try:
-        await _run(gated, session_factory, camera_id, BroadcastHub(), ticks=5)
+        # A tick with room for a detection to finish in it. The loop no longer
+        # waits for one, so on a faster tick the heartbeat would still fire on
+        # every tick the detector was FREE - the right behaviour, but a count
+        # that depends on thread scheduling rather than on the rule here.
+        await _run(
+            gated, session_factory, camera_id, BroadcastHub(), ticks=5,
+            poll_interval_s=0.05,
+        )
     finally:
-        camera_loop.run_inference = real_inference
+        inference_scheduler.run_inference = real_inference
 
     # A zero interval means every tick is overdue, so nothing is ever skipped.
     assert calls == 5
@@ -462,18 +509,18 @@ async def test_the_rate_floor_keeps_the_detector_off_a_fast_camera(
         }
     )
     calls = 0
-    real_inference = camera_loop.run_inference
+    real_inference = inference_scheduler.run_inference
 
     def counting_inference(*args: object, **kwargs: object) -> object:
         nonlocal calls
         calls += 1
         return real_inference(*args, **kwargs)
 
-    camera_loop.run_inference = counting_inference
+    inference_scheduler.run_inference = counting_inference
     try:
         await _run(gated, session_factory, camera_id, BroadcastHub(), ticks=8)
     finally:
-        camera_loop.run_inference = real_inference
+        inference_scheduler.run_inference = real_inference
 
     # The first frame has no previous result to publish instead, so it always
     # runs; every later tick is inside the floor.
@@ -494,20 +541,77 @@ async def test_the_heartbeat_still_fires_through_the_rate_floor(
         }
     )
     calls = 0
-    real_inference = camera_loop.run_inference
+    real_inference = inference_scheduler.run_inference
 
     def counting_inference(*args: object, **kwargs: object) -> object:
         nonlocal calls
         calls += 1
         return real_inference(*args, **kwargs)
 
-    camera_loop.run_inference = counting_inference
+    inference_scheduler.run_inference = counting_inference
     try:
-        await _run(gated, session_factory, camera_id, BroadcastHub(), ticks=5)
+        # Slower than a detection, so every tick finds the detector free - see
+        # the heartbeat test above for why that matters to the count.
+        await _run(
+            gated, session_factory, camera_id, BroadcastHub(), ticks=5,
+            poll_interval_s=0.05,
+        )
     finally:
-        camera_loop.run_inference = real_inference
+        inference_scheduler.run_inference = real_inference
 
     assert calls == 5
+
+
+async def test_the_live_view_does_not_wait_for_the_detector(
+    settings, session_factory, camera_id
+) -> None:
+    """The shape of this loop, asserted directly.
+
+    Publishing used to sit behind the inference await, so every frame a viewer
+    saw had already aged by one detection - ~616 ms on the board, and more
+    with cameras queued behind the single shared inference worker. It only
+    happened on ticks where the picture had CHANGED, so the live view was
+    smooth while nothing moved and stalled the moment a car did, which is the
+    only time anybody is watching.
+
+    Here the second detection never returns. What must keep happening anyway
+    is the picture: frames reach viewers throughout, and no third detection is
+    ever started, because one worker serves every camera and queueing more
+    would only build a backlog of results describing frames already gone.
+    """
+    released = threading.Event()
+    calls = 0
+    real_inference = inference_scheduler.run_inference
+
+    def blocking_inference(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            # Bounded only so a broken loop fails the assertion rather than
+            # hanging the suite; nothing sets this until teardown.
+            released.wait(timeout=0.5)
+        return real_inference(*args, **kwargs)
+
+    hub = BroadcastHub()
+    hub.subscribe(camera_id)
+    published: list[bytes] = []
+    hub.publish = lambda _cid, message: published.append(message)  # type: ignore[method-assign]
+
+    inference_scheduler.run_inference = blocking_inference
+    try:
+        await _run(
+            settings, session_factory, camera_id, hub, ticks=10, poll_interval_s=0.01
+        )
+    finally:
+        released.set()
+        inference_scheduler.run_inference = real_inference
+
+    # One detection landed; the second is still stuck inside the pool. Under
+    # the old shape every tick would have waited for its own detection and
+    # this would read 10.
+    assert calls == 2
+    # ...and the picture kept moving the whole time it was stuck.
+    assert len(published) >= 6
 
 
 async def test_a_skipped_frame_still_reaches_viewers(

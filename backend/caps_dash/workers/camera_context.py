@@ -19,7 +19,7 @@ from ..errors.exceptions import NotFoundError
 from ..realtime.broadcast_hub import BroadcastHub
 from ..realtime.frame_header import build_frame_header
 from ..vision.domain import Slot, SlotMap, SlotMapFilter, SlotState, build_filter
-from ..vision.frame_change_gate import FrameChangeGate
+from ..vision.frame_change_gate import FrameChangeGate, build_roi_mask
 from ..vision.sources.base import FrameSource
 from ..vision.sources.source_factory import build_source
 from .camera_metrics import CameraMetrics
@@ -85,6 +85,12 @@ class CameraContext:
     last_outcome: InferenceOutcome | None = None
     last_states: dict[str, Any] = field(default_factory=dict)
     last_fitted: SlotMap | None = None
+
+    # Whether the last detection agreed with the states being reported. False
+    # means a slot is mid-transition and the change gate must keep feeding the
+    # vote filter - see `camera_tick_policy.needs_more_observations`. Starts
+    # False because a context with no result yet has nothing to agree with.
+    votes_settled: bool = False
 
     @property
     def camera_id(self) -> int:
@@ -222,6 +228,19 @@ def build_context(
     state_tracker = StateTracker()
     state_tracker.seed(persisted_states)
 
+    # The gate watches only where slots are drawn. Built here rather than
+    # inside the gate so the gate keeps no opinion about slot maps, and so a
+    # redraw rebuilds it as a side effect of rebuilding the context.
+    change_gate = FrameChangeGate(
+        threshold=settings.motion_change_threshold,
+        force_interval_s=settings.motion_force_interval_s,
+    )
+    change_gate.set_region(
+        build_roi_mask(
+            [slot.polygon for slot in slot_map.slots], slot_map.width, slot_map.height
+        )
+    )
+
     return CameraContext(
         config=config,
         settings=settings,
@@ -240,10 +259,7 @@ def build_context(
         # Fresh per context: a rebuilt camera has a new slot map, so the
         # reference frame from the old one describes a layout that no longer
         # applies and must not gate the first frame under the new one.
-        change_gate=FrameChangeGate(
-            threshold=settings.motion_change_threshold,
-            force_interval_s=settings.motion_force_interval_s,
-        ),
+        change_gate=change_gate,
     )
 
 

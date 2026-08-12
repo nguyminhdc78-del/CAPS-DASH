@@ -23,6 +23,52 @@ from .camera_context import CameraContext
 HEALTH_INTERVAL_S = 60.0
 
 
+def needs_more_observations(context: CameraContext) -> bool:
+    """Whether the vote filter is still mid-decision and must keep being fed.
+
+    The change gate and the vote filter want opposite things, and this is
+    where they are reconciled. The gate skips because "the previous result
+    still describes this frame". The filter changes its mind only after
+    `threshold` of `window` observations agree. So on the two occasions the
+    filter has work to do, the gate is precisely wrong:
+
+    **Warm-up.** A slot reading UNKNOWN has no previous result, so the gate's
+    licence does not apply. Measured: two minutes of UNKNOWN after every
+    restart or ROI redraw, because a static car park changes nothing and only
+    the heartbeat fed the filter - one observation per
+    `motion_force_interval_s`, which this migration raised from 10 s to 30 s
+    and so tripled.
+
+    **A car arriving or leaving.** Worse, because it looks like a wrong
+    answer rather than a missing one. Taking a car out changes the scene
+    ONCE: the gate fires, one FREE observation lands, and then the scene is
+    static again so the gate skips - leaving the slot reporting OCCUPIED,
+    with nothing on screen to explain it, until four heartbeats have passed.
+    Reported from the floor: "I took the car out and waited nearly a minute
+    and it still says occupied."
+
+    Both are the same condition - the last observation disagrees with the
+    reported state - and both cost a handful of extra inferences, once, at
+    exactly the moment the answer is in doubt.
+    """
+    if not context.slot_map.slots:
+        # No ROI drawn, so there is no state to settle and nothing this rule
+        # can help with. Returning True here was a real fault, not a
+        # theoretical one: an unconfigured second camera ran a detection on
+        # EVERY tick forever, saturated the single shared inference worker -
+        # 2 x 1.5 s of work per 3 s tick - and starved the camera that did
+        # have slots. Measured: 11 inferences a minute on the empty camera, 0
+        # on the configured one, which is why a slot took a minute to update
+        # instead of the twelve seconds the votes actually need.
+        return False
+
+    return (
+        not context.last_states
+        or not context.votes_settled
+        or any(str(state) == "UNKNOWN" for state in context.last_states.values())
+    )
+
+
 def too_soon_to_infer(
     decision: GateDecision, last_inference_at: float | None, context: CameraContext
 ) -> bool:

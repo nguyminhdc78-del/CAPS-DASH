@@ -6,7 +6,17 @@ camera produces is the same picture, and running YOLO on each of them spends
 changed. Comparing two downscaled greyscale frames costs 2.7 ms - 0.4% of an
 inference - so the cheap check pays for itself the first time it says "skip".
 
-TWO RULES, and the second is what makes the first safe.
+THREE RULES.
+
+**Only look inside the parking slots.** The gate used to average the whole
+frame, which is wrong in both directions: somebody walking past the edge of
+the view triggers a detection that can change no slot's state, while a car
+easing into one slot out of twenty is diluted by the nineteen that did not
+change and may never cross the threshold at all. Restricting the comparison to
+the drawn ROI - the only region whose contents can alter an answer - makes the
+number mean "something happened where it matters". A camera with no slot map
+yet falls back to the whole frame, because "nowhere matters" would otherwise
+mean "never infer".
 
 **Compare against the last INFERRED frame, not the previous frame.** A car
 easing into a slot over ten frames changes each frame only slightly; measured
@@ -28,6 +38,7 @@ margin. A brighter camera is noisier and may need more.
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import cv2
@@ -57,6 +68,15 @@ class FrameChangeGate:
         self._force_interval_s = force_interval_s
         self._reference: np.ndarray | None = None
         self._last_infer_at = 0.0
+        self._roi: np.ndarray | None = None
+
+    def set_region(self, roi: np.ndarray | None) -> None:
+        """Restrict the comparison to this mask, or `None` for the whole frame.
+
+        Set from the slot map, and re-set when it is redrawn - a mask built
+        from a layout that no longer applies would watch the wrong pixels.
+        """
+        self._roi = roi
 
     def evaluate(self, image: np.ndarray) -> GateDecision:
         """Judge one frame. Call `mark_inferred` if the caller acts on `infer=True`."""
@@ -65,7 +85,8 @@ class FrameChangeGate:
         if self._reference is None:
             return GateDecision(True, "first_frame", 0.0)
 
-        difference = float(np.abs(sample - self._reference).mean())
+        delta = np.abs(sample - self._reference)
+        difference = float(delta[self._roi].mean() if self._roi is not None else delta.mean())
 
         if difference >= self._threshold:
             return GateDecision(True, "changed", difference)
@@ -90,6 +111,38 @@ class FrameChangeGate:
         """
         self._reference = None
         self._last_infer_at = 0.0
+
+
+def build_roi_mask(
+    polygons: Sequence[Sequence[tuple[float, float]]], width: int, height: int
+) -> np.ndarray | None:
+    """The slot polygons, drawn onto the gate's comparison grid.
+
+    Returns `None` when there is nothing to watch - no slots, or slots so
+    small they vanish at 64x48 - which the gate reads as "compare everything".
+    Silently watching an empty mask would mean a difference of `nan` and a
+    detector that never runs again.
+
+    Dilated by one cell deliberately. A car announces itself at a slot's edge
+    before it is inside, one cell here is roughly ten source pixels, and the
+    point is to react as the car arrives rather than once it has parked.
+    """
+    if not polygons or width <= 0 or height <= 0:
+        return None
+
+    mask = np.zeros((SAMPLE_HEIGHT, SAMPLE_WIDTH), np.uint8)
+    scale_x, scale_y = SAMPLE_WIDTH / width, SAMPLE_HEIGHT / height
+    for polygon in polygons:
+        if len(polygon) < 3:
+            continue
+        points = np.array(
+            [(round(x * scale_x), round(y * scale_y)) for x, y in polygon], np.int32
+        )
+        cv2.fillPoly(mask, [points], 1)
+
+    if not mask.any():
+        return None
+    return cv2.dilate(mask, np.ones((3, 3), np.uint8)).astype(bool)
 
 
 def _downscale(image: np.ndarray) -> np.ndarray:
