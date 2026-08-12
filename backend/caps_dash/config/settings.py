@@ -84,10 +84,17 @@ class Settings(BaseSettings):
     # running the detector on them re-derives an unchanged answer for ~616 ms
     # of a shared four-core board. A frame is only inferred when it differs
     # from the last inferred one by this much (mean absolute difference of a
-    # 64x48 greyscale sample, 0-255 scale). Measured noise floor on the
-    # reference camera was ~0.5 with a worst case of 1.2; 3.0 leaves margin.
-    # A brighter scene is noisier and may want more.
-    motion_change_threshold: float = 3.0
+    # 64x48 greyscale sample, 0-255 scale). Measured on the reference camera
+    # with its exposure locked and settled: noise sits at 0.8 with peaks of
+    # 3.3, while a car covering a sixth of the frame reads about 13. This
+    # default sits in that gap.
+    #
+    # **Lock the camera's exposure first.** With aec/agc/awb on automatic the
+    # sensor hunts and the whole frame shifts brightness between shots -
+    # measured noise then reaches 7.5 with peaks of 38, which overlaps the
+    # car signal completely and no threshold can separate them. See
+    # `docs/deployment-guide.md`.
+    motion_change_threshold: float = 8.0
     # ...and inferred anyway this often regardless, so slow drift - dusk, a
     # light switched on, auto-exposure creeping - cannot keep the detector
     # asleep indefinitely. This bounds how long the system can be wrong.
