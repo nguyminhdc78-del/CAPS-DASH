@@ -55,11 +55,13 @@ export default function DashboardPage(): ReactNode {
 
   return (
     <>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 20 }}>
+        <Typography.Title level={3} className="droom-page-title" style={{ margin: 0 }}>
           {t('dashboard:title')}
         </Typography.Title>
-        <DashboardUpdatedLabel lastUpdatedAt={lastUpdatedAt} />
+        <span className="droom-updated-pill">
+          <DashboardUpdatedLabel lastUpdatedAt={lastUpdatedAt} />
+        </span>
       </Row>
 
       <Row gutter={[16, 16]}>

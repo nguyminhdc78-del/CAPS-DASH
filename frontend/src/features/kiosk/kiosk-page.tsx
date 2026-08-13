@@ -95,12 +95,12 @@ export default function KioskPage(): ReactNode {
 
   return (
     <div
+      className="droom-kiosk"
       style={{
         position: 'fixed',
         inset: 0,
         overflow: 'auto',
         padding: 24,
-        background: 'var(--ant-color-bg-layout, #f5f5f5)',
         zIndex: 1000,
         // A column so the floor row below can take the leftover height. A
         // lobby screen is mounted and never scrolled, so content hugging the
@@ -111,11 +111,11 @@ export default function KioskPage(): ReactNode {
       }}
     >
       <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
-        <Typography.Title level={1} style={{ margin: 0 }}>
+        <Typography.Title level={1} className="droom-kiosk-title" style={{ margin: 0 }}>
           {t('kiosk:title')}
         </Typography.Title>
         <Flex gap={16} align="center">
-          <Typography.Title level={3} style={{ margin: 0, fontVariantNumeric: 'tabular-nums' }}>
+          <Typography.Title level={3} className="droom-clock" style={{ margin: 0 }}>
             {dayjs(now).format('HH:mm:ss')}
           </Typography.Title>
           <Button icon={<GlobalOutlined />} onClick={toggleLanguage} aria-label={t('kiosk:languageToggleAriaLabel')}>

@@ -29,8 +29,11 @@ export default function LoginPage(): ReactNode {
   }
 
   return (
-    <CenteredLayout>
-      <Card style={{ width: 380 }}>
+    <CenteredLayout className="droom-auth">
+      <Card className="droom-auth-card" style={{ width: 400 }} styles={{ body: { padding: 32 } }}>
+        <div className="droom-auth-mark" aria-hidden>
+          C
+        </div>
         <Typography.Title level={3} style={{ textAlign: 'center', marginBottom: 4 }}>
           {t('common:appName')}
         </Typography.Title>

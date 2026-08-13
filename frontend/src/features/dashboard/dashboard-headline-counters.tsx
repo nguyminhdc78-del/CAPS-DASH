@@ -1,40 +1,42 @@
-import { Card, Col, Row, Skeleton, Statistic } from 'antd'
+import { AppstoreOutlined, CarOutlined, CheckCircleOutlined, QuestionOutlined } from '@ant-design/icons'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { SLOT_STATE_COLORS } from '@/core/theme/use-theme-config'
 import type { OccupancySummary } from '@/features/slots/use-slots-queries'
 import { useCountUp } from './use-count-up'
 
-function CounterCard({
+type StatVariant = 'primary' | 'success' | 'danger' | 'neutral'
+
+/**
+ * One Droom-style gradient stat tile: an icon in a translucent square beside a
+ * large count-up number and its label. Loading shows an em-dash rather than a
+ * skeleton so the coloured tile never flashes empty white.
+ */
+function StatTile({
   label,
   value,
-  color,
+  variant,
+  icon,
   loading,
 }: {
   label: string
   value: number
-  color?: string
+  variant: StatVariant
+  icon: ReactNode
   loading: boolean
 }): ReactNode {
   const display = useCountUp(value)
 
   return (
-    <Col xs={12} lg={6}>
-      <Card>
-        <div role="group" aria-label={label}>
-          {loading ? (
-            <Skeleton active paragraph={false} title={{ width: '60%' }} />
-          ) : (
-            // `valueStyle` prop omitted entirely (not passed as `undefined`)
-            // when there is no colour - see the options-spread comment in
-            // `use-cameras-queries.ts` for why exactOptionalPropertyTypes
-            // requires that distinction.
-            <Statistic title={label} value={display} {...(color ? { valueStyle: { color } } : {})} />
-          )}
-        </div>
-      </Card>
-    </Col>
+    <div className={`droom-stat droom-stat--${variant}`} role="group" aria-label={label}>
+      <div className="droom-stat__icon" aria-hidden>
+        {icon}
+      </div>
+      <div className="droom-stat__body">
+        <div className="droom-stat__value">{loading ? '—' : display}</div>
+        <div className="droom-stat__label">{label}</div>
+      </div>
+    </div>
   )
 }
 
@@ -42,8 +44,8 @@ function CounterCard({
  * Total / free / occupied / unknown - four independent numbers, large, with
  * a count-up animation on change (`useCountUp`).
  *
- * `unknown` gets its own card and its own colour (`SLOT_STATE_COLORS.
- * UNKNOWN`, grey), never summed into `free` and never rendered green. See
+ * `unknown` gets its own tile and a neutral slate gradient (`--neutral`),
+ * never summed into `free` and never rendered green. See
  * `use-slots-queries.ts::OccupancySummary`'s docstring: a slot the detector
  * cannot currently classify (camera offline, still warming up, occluded) is
  * a different fact from an empty one, and folding the two together would let
@@ -59,26 +61,35 @@ export function DashboardHeadlineCounters({
   const { t } = useTranslation('slot')
 
   return (
-    <Row gutter={[16, 16]}>
-      <CounterCard label={t('slot:total')} value={summary?.total ?? 0} loading={loading} />
-      <CounterCard
+    <div className="droom-stat-grid">
+      <StatTile
+        label={t('slot:total')}
+        value={summary?.total ?? 0}
+        variant="primary"
+        icon={<AppstoreOutlined />}
+        loading={loading}
+      />
+      <StatTile
         label={t('slot:free')}
         value={summary?.free ?? 0}
-        color={SLOT_STATE_COLORS.FREE}
+        variant="success"
+        icon={<CheckCircleOutlined />}
         loading={loading}
       />
-      <CounterCard
+      <StatTile
         label={t('slot:occupied')}
         value={summary?.occupied ?? 0}
-        color={SLOT_STATE_COLORS.OCCUPIED}
+        variant="danger"
+        icon={<CarOutlined />}
         loading={loading}
       />
-      <CounterCard
+      <StatTile
         label={t('slot:unknown')}
         value={summary?.unknown ?? 0}
-        color={SLOT_STATE_COLORS.UNKNOWN}
+        variant="neutral"
+        icon={<QuestionOutlined />}
         loading={loading}
       />
-    </Row>
+    </div>
   )
 }

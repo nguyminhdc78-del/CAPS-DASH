@@ -6,19 +6,35 @@ Frontend standards for visual consistency, accessibility, and bilingual usabilit
 
 All UI components sourced from Ant Design (antd v6). Do not reinvent buttons, forms, or modals.
 
+### Design Language: "Droom" layer
+
+The app uses an indigo/violet design system (adapted from the "Droom" admin
+template) on a slate canvas: Inter type, glassmorphic cards with a gradient
+top-accent, a deep-slate gradient sidebar, a translucent blurred header, and
+gradient stat tiles. Effects that AntD tokens cannot express live in one
+global stylesheet — `frontend/src/styles/droom.css` (imported once in
+`main.tsx`) — driven by utility classes (`.droom-content`, `.droom-sider`,
+`.droom-header`, `.droom-stat`, `.droom-auth`, `.droom-kiosk`, …) and kept
+theme-aware via `html[data-theme]`. Colour, radius and control sizing stay in
+the AntD theme tokens below; do not hard-code colours in components.
+
 ### Token Overrides
-Place custom tokens in the theme provider. Avoid inline style props except for layout (margins, padding).
+Place custom tokens in the theme provider (`use-theme-config.ts`). Avoid inline
+style props except for layout (margins, padding).
 
 ```typescript
-// Example: theme configuration
+// Example: theme configuration (see src/core/theme/use-theme-config.ts)
 const theme = {
   token: {
-    colorPrimary: '#1890ff',
-    borderRadius: 6,
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto',
-  },
-  components: {
-    Button: { primaryColor: '#1890ff' },
+    colorPrimary: '#6366F1',      // indigo
+    colorInfo: '#6366F1',
+    colorSuccess: '#22C55E',
+    colorWarning: '#F59E0B',
+    colorError: '#EF4444',
+    borderRadius: 10,
+    borderRadiusLG: 14,
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto",
+    colorBgLayout: 'transparent', // slate canvas painted by droom.css shows through
   },
 }
 ```
@@ -38,9 +54,13 @@ Three states, three distinct colors. **UNKNOWN must never be green.**
 
 | State | Color | Usage | Rule |
 |-------|-------|-------|------|
-| UNKNOWN | Gray (`#9CA3AF`) | Before vote filter consensus | Never green; never folded into FREE count |
-| FREE | Green (`#10B981`) | Slot is empty | Safe to park |
+| UNKNOWN | Slate (`#94A3B8`) | Before vote filter consensus | Never green; never folded into FREE count |
+| FREE | Green (`#22C55E`) | Slot is empty | Safe to park |
 | OCCUPIED | Red (`#EF4444`) | Slot has a car | Not available |
+
+Defined once in `SLOT_STATE_COLORS` (`use-theme-config.ts`); the dashboard's
+UNKNOWN stat tile uses the neutral slate `.droom-stat--neutral` gradient, never
+a status colour.
 
 **Examples**:
 ```typescript

@@ -38,16 +38,11 @@ export function AppSiderMenu(): ReactNode {
 
   return (
     <>
-      <div
-        style={{
-          color: '#fff',
-          fontWeight: 600,
-          fontSize: 18,
-          padding: '16px 24px',
-          letterSpacing: 1,
-        }}
-      >
-        CAPS
+      <div className="droom-brand">
+        <span className="droom-brand__mark" aria-hidden>
+          C
+        </span>
+        <span className="droom-brand__word">CAPS</span>
       </div>
       <Menu
         theme="dark"
