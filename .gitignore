@@ -78,6 +78,10 @@ ck.md
 .gemini/settings.json
 .claude/settings.bak.json
 
+# chrome-devtools skill scratch output (screenshots, temp scripts, logs) -
+# throwaway debug artifacts, never project deliverables
+.claude/chrome-devtools/
+
 # --- CAPS-DASH ---------------------------------------------------------------
 # Python
 .venv/
