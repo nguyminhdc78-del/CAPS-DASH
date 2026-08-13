@@ -9,24 +9,27 @@ import {
   TeamOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons'
-import { lazy } from 'react'
 import type { ReactNode } from 'react'
 
 import type { Role } from '@/core/auth/role-ranking'
+import { lazyWithReload } from './lazy-with-reload'
 
-const DashboardPage = lazy(() => import('@/features/dashboard/dashboard-page'))
-const SlotsPage = lazy(() => import('@/features/slots/slots-page'))
-const CamerasPage = lazy(() => import('@/features/cameras/cameras-page'))
-const LiveViewPage = lazy(() => import('@/features/live/live-view-page'))
+// `lazyWithReload`, not the bare `React.lazy`: a redeploy renames these
+// hashed chunks, so a tab left open on the old index.html 404s the old
+// filename. The wrapper turns that dead-end into a one-time self-heal reload.
+const DashboardPage = lazyWithReload(() => import('@/features/dashboard/dashboard-page'))
+const SlotsPage = lazyWithReload(() => import('@/features/slots/slots-page'))
+const CamerasPage = lazyWithReload(() => import('@/features/cameras/cameras-page'))
+const LiveViewPage = lazyWithReload(() => import('@/features/live/live-view-page'))
 // Konva is a large dependency and only the ROI editor needs it. Lazy here is
 // what keeps it out of the initial bundle everyone else downloads.
-const RoiEditorPage = lazy(() => import('@/features/roi-editor/roi-editor-page'))
-const PlateSearchPage = lazy(() => import('@/features/plates/plate-search-page'))
-const HistoryPage = lazy(() => import('@/features/history/history-page'))
-const StatisticsPage = lazy(() => import('@/features/statistics/statistics-page'))
-const AlertsPage = lazy(() => import('@/features/alerts/alerts-page'))
-const UsersPage = lazy(() => import('@/features/users/users-page'))
-const SystemPage = lazy(() => import('@/features/system/system-page'))
+const RoiEditorPage = lazyWithReload(() => import('@/features/roi-editor/roi-editor-page'))
+const PlateSearchPage = lazyWithReload(() => import('@/features/plates/plate-search-page'))
+const HistoryPage = lazyWithReload(() => import('@/features/history/history-page'))
+const StatisticsPage = lazyWithReload(() => import('@/features/statistics/statistics-page'))
+const AlertsPage = lazyWithReload(() => import('@/features/alerts/alerts-page'))
+const UsersPage = lazyWithReload(() => import('@/features/users/users-page'))
+const SystemPage = lazyWithReload(() => import('@/features/system/system-page'))
 
 export interface AppRoute {
   path: string
