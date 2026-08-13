@@ -414,6 +414,10 @@ html[data-theme='dark'] .droom-auth-card {
 .droom-kiosk-title {
   font-weight: 800;
   letter-spacing: 1px;
+  /* "CAPS" is one word - never let a cramped phone top bar break it into
+     "CAP / S". */
+  white-space: nowrap;
+  flex-shrink: 0;
   background: linear-gradient(135deg, #67e8f9, #a78bfa);
   -webkit-background-clip: text;
   background-clip: text;
@@ -424,6 +428,7 @@ html[data-theme='dark'] .droom-auth-card {
   color: var(--hud-cyan) !important;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
+  white-space: nowrap;
   padding: 6px 16px;
   border-radius: 12px;
   background: rgba(34, 211, 238, 0.08);
@@ -623,6 +628,9 @@ html[data-theme='dark'] .droom-auth-card {
 @media (max-width: 640px) {
   .kiosk-hero { padding-top: 8px; }
   .kiosk-avail__floor { min-width: 44%; flex: 1 1 44%; }
+  /* Shrink the top-bar type so brand + clock + controls all fit one line. */
+  .droom-kiosk-title { font-size: 20px; letter-spacing: 0.5px; }
+  .droom-clock { font-size: 13px; padding: 5px 11px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
