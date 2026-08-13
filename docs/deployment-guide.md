@@ -554,7 +554,7 @@ Camera row:
 | field | value |
 |---|---|
 | `source_type` | `esp32cam_http` (labelled "HTTP snapshot (polled)" in the UI) |
-| `source_url` | `http://<camera-wifi-ip>:8080/snapshot` (was `192.168.137.90` on 2026-08-12; DHCP, so re-check after a reboot) |
+| `source_url` | `http://maixcam-1677.local:8080/snapshot` — **by name, not by IP**. The address is DHCP and it moves (`.90` one evening, `.244` the next morning, with the system dead in between until someone looked). The board resolves mDNS; the extra lookup measured 208 ms mean against 196 ms by raw IP. |
 | `poll_interval_s` | `2.0` |
 
 **The 2 s cadence now fits - measured, not assumed.** The tick is also the

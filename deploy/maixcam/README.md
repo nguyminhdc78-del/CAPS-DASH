@@ -7,11 +7,27 @@ contract is the same: one still per request.
 
 **Reach it over WiFi**, not USB-C. Measured 2026-08-12: `usb0` exists and holds
 `10.22.120.1` but is NO-CARRIER/DOWN — the USB-C cable supplies power only. The
-camera joins the hotspot and takes a DHCP address (`192.168.137.90` on the
-day). Because that moves, find it from the hotspot's client list, or probe:
+camera joins the hotspot over `wlan0`.
+
+**Address the camera by name, never by IP.** Its address is DHCP and it moves:
+`192.168.137.90` one evening, `192.168.137.244` the next morning, and the
+system was dead until someone noticed. The camera runs avahi, and the UNO Q
+resolves mDNS, so the camera row's `source_url` should be
+
+```
+http://maixcam-1677.local:8080/snapshot
+```
+
+which follows the camera wherever DHCP puts it. Measured cost of the extra
+lookup: a mean of 208 ms per fetch against 196 ms by raw IP - immaterial
+against an 8 s timeout, and it removes an outage that otherwise recurs every
+time the camera reboots.
+
+To find it by hand anyway:
 
 ```bash
-ssh -i ~/.ssh/maixcam root@<ip> hostname   # answers maixcam-1677
+getent hosts maixcam-1677.local          # from the board
+ssh -i ~/.ssh/maixcam root@<ip> hostname # answers maixcam-1677
 ```
 
 The device is small: **1 CPU core, 128 MB RAM, CPython 3.11.6, no systemd.**
@@ -22,8 +38,12 @@ Every constant in `http_snapshot_main.py` is sized for that.
 polls it every 2.0 s with zero read failures. Full measurements:
 `plans/260812-1757-snapshot-polling-replaces-rtsp-stream/reports/phase-01-spike-measurements.md`.
 
-**Not yet proven: the power cycle.** Autostart is configured, not demonstrated.
-Reboot and confirm `/snapshot` answers unattended before trusting it.
+**Power cycle: proven.** Rebooted deliberately; the endpoint answered again
+with the process running as `main.py auto_start`, which is the launcher's own
+argument, so it started unattended rather than being left over from a shell.
+Confirmed again the next morning after an overnight power-off - the app came
+back on its own, at a new DHCP address, which is what the hostname above is
+for.
 
 ## Files
 
