@@ -77,6 +77,15 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
     access_token_ttl_min: int = 15
     refresh_token_ttl_days: int = 7
+    # Whether the refresh cookie carries the `Secure` flag. `None` (the
+    # default) means "follow APP_ENV": Secure in prod, not in dev - correct
+    # when prod is served over HTTPS. Set `COOKIE_SECURE=false` to run prod
+    # over plain http (e.g. a LAN demo board on `http://<ip>:8000`): a Secure
+    # cookie is silently dropped by the browser over http, so the refresh
+    # cookie never stores and every reload/new tab logs the user out. Only
+    # relax this on a trusted network - it is a real reduction in cookie
+    # protection, made deliberately for the http-demo case.
+    cookie_secure: bool | None = None
     login_max_attempts: int = 5
     login_window_s: int = 300
     # uvicorn's own env var (`FORWARDED_ALLOW_IPS`, read by `Config.load()` to
@@ -358,6 +367,12 @@ class Settings(BaseSettings):
     @property
     def is_prod(self) -> bool:
         return self.app_env == "prod"
+
+    @property
+    def refresh_cookie_secure(self) -> bool:
+        """`Secure` flag for the refresh cookie: explicit `COOKIE_SECURE` wins,
+        else follow the environment (Secure in prod, plain in dev)."""
+        return self.is_prod if self.cookie_secure is None else self.cookie_secure
 
 
 @lru_cache(maxsize=1)

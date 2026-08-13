@@ -27,9 +27,11 @@ def set_refresh_cookie(response: Response, settings: Settings, token: str) -> No
         # Strict is affordable because the SPA is same-origin with the API.
         # There is no cross-site navigation that needs to arrive authenticated.
         samesite="strict",
-        # Local development is plain http; a Secure cookie would simply never
-        # be sent and login would appear broken for no visible reason.
-        secure=settings.is_prod,
+        # Follows APP_ENV by default (Secure in prod), but overridable via
+        # COOKIE_SECURE so a prod board served over plain http can turn it off
+        # - a Secure cookie is silently dropped over http, which would leave
+        # the refresh cookie unstored and log the user out on every reload.
+        secure=settings.refresh_cookie_secure,
         path=COOKIE_PATH,
         max_age=settings.refresh_token_ttl_days * 24 * 3600,
     )
@@ -43,7 +45,7 @@ def clear_refresh_cookie(response: Response, settings: Settings) -> None:
         path=COOKIE_PATH,
         httponly=True,
         samesite="strict",
-        secure=settings.is_prod,
+        secure=settings.refresh_cookie_secure,
     )
 
 
