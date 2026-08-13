@@ -11,6 +11,8 @@
   "offlineNoDataYet": "Đang chờ dữ liệu đầu tiên…",
   "offlineDataAge": "Đang hiển thị dữ liệu từ {{age}} trước",
   "noFloorData": "Chưa có dữ liệu theo tầng",
+  "floorLabel": "Tầng {{floor}}",
+  "allFull": "Tầng này đã hết chỗ trống",
   "freeCodesTitle": "Ô trống",
   "freeCodesTruncated": "Hiển thị {{count}} ô đầu tiên",
   "searchTitle": "Tìm xe của bạn",

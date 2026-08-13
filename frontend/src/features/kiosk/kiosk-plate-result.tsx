@@ -33,11 +33,16 @@ export function KioskPlateResult({ match }: { match: PublicPlateMatch }): ReactN
         </Typography.Text>
         <Flex align="baseline" gap={12}>
           <EnvironmentOutlined style={{ fontSize: 32 }} />
-          <Typography.Title level={1} style={{ margin: 0, fontSize: 48, fontWeight: 700 }}>
+          <Typography.Title
+            level={1}
+            style={{ margin: 0, fontSize: 'clamp(48px, 5vw, 80px)', fontWeight: 700 }}
+          >
             {match.slot_code}
           </Typography.Title>
-          <Typography.Text style={{ fontSize: 18 }} type="secondary">
-            {match.floor}
+          {/* Labelled, not bare: beside a bay code, a lone "1" reads as part
+              of the code rather than as the floor it sits on. */}
+          <Typography.Text style={{ fontSize: 'clamp(18px, 1.6vw, 28px)' }} type="secondary">
+            {t('kiosk:floorLabel', { floor: match.floor })}
           </Typography.Text>
         </Flex>
         <Typography.Text style={{ fontSize: 18, letterSpacing: 1 }} strong>

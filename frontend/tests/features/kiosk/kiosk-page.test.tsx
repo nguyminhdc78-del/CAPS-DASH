@@ -189,4 +189,60 @@ describe('KioskPage', () => {
     expect(within(screen.getByRole('group', { name: 'Occupied' })).getByText('3')).toBeInTheDocument()
     expect(within(screen.getByRole('group', { name: 'Unknown' })).getByText('1')).toBeInTheDocument()
   })
+
+  // A site whose floors are named "1"/"2" rendered a lone digit above the
+  // counts, which on a lobby screen reads as a fourth number rather than as
+  // the floor the other three describe.
+  it('labels the floor rather than printing its bare code', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, SUMMARY_OK)))
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <KioskPage />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Floor 1')).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * A full floor must say so in words. The counts alone leave a green `0`
+   * standing where the free-bay codes normally are, and a driver reading it
+   * across a lobby is deciding whether to drive down at all.
+   */
+  it('says a floor is full instead of leaving a bare zero', async () => {
+    const full = {
+      counts: {
+        total: 3,
+        free: 0,
+        occupied: 3,
+        unknown: 0,
+        by_floor: [{ floor: '1', total: 3, free: 0, occupied: 3, unknown: 0 }],
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+      // What the backend actually sends for a full floor: no free bay has a
+      // code to list, so the floor is absent from the map entirely.
+      free_codes_by_floor: {},
+      plate_search_enabled: false,
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, full)))
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <KioskPage />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('No free bays on this floor')).toBeInTheDocument()
+    })
+    // The counts still stand beside the sentence, and the free-bay heading is
+    // gone rather than sitting above an empty row.
+    expect(within(screen.getByRole('group', { name: 'Occupied' })).getByText('3')).toBeInTheDocument()
+    expect(screen.queryByText('Free bays')).not.toBeInTheDocument()
+  })
 })

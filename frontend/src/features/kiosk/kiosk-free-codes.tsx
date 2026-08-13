@@ -36,16 +36,25 @@ export function KioskFreeCodes({
 
   return (
     <Flex vertical gap={8} align="center">
-      <Typography.Text style={{ fontSize: 18 }}>{t('kiosk:freeCodesTitle')}</Typography.Text>
+      <Typography.Text style={{ fontSize: 'clamp(18px, 1.6vw, 28px)' }}>
+        {t('kiosk:freeCodesTitle')}
+      </Typography.Text>
+      {/* These codes are the one thing a driver acts on - the bay to steer
+          for - so they scale with the screen like the counts above them
+          rather than staying at reading-distance size on a lobby wall. */}
       <Flex gap={8} wrap justify="center">
         {sorted.map((code) => (
-          <Tag key={code} color={SLOT_STATE_COLORS.FREE} style={{ fontSize: 18, padding: '4px 12px' }}>
+          <Tag
+            key={code}
+            color={SLOT_STATE_COLORS.FREE}
+            style={{ fontSize: 'clamp(18px, 2vw, 36px)', padding: '6px 16px', lineHeight: 1.4 }}
+          >
             {code}
           </Tag>
         ))}
       </Flex>
       {truncated && (
-        <Typography.Text type="secondary" style={{ fontSize: 18 }}>
+        <Typography.Text type="secondary" style={{ fontSize: 'clamp(18px, 1.6vw, 28px)' }}>
           {t('kiosk:freeCodesTruncated', { count: codes.length })}
         </Typography.Text>
       )}

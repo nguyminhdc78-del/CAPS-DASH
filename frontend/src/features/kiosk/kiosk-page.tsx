@@ -102,6 +102,12 @@ export default function KioskPage(): ReactNode {
         padding: 24,
         background: 'var(--ant-color-bg-layout, #f5f5f5)',
         zIndex: 1000,
+        // A column so the floor row below can take the leftover height. A
+        // lobby screen is mounted and never scrolled, so content hugging the
+        // top and leaving the lower half of a 1080p panel empty is wasted
+        // wall - the panels grow into it instead.
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
@@ -139,9 +145,15 @@ export default function KioskPage(): ReactNode {
       ) : null}
 
       {isDisabled ? null : floors.length === 0 ? (
-        <Empty description={t('kiosk:noFloorData')} />
+        <Flex flex={1} align="center" justify="center">
+          <Empty description={t('kiosk:noFloorData')} />
+        </Flex>
       ) : (
-        <Flex gap={16} wrap style={{ marginTop: 16 }}>
+        // `flex={1}` claims the height the header and search box did not use;
+        // `align="stretch"` makes every panel in a row the same height, so two
+        // floors with different numbers of free bays do not render as two
+        // cards of different sizes.
+        <Flex gap={16} wrap flex={1} align="stretch" style={{ marginTop: 16 }}>
           {floors.map((floor) => (
             <div key={floor.floor} style={{ flex: '1 1 320px' }}>
               <KioskFloorPanel floor={floor} freeCodes={freeCodesByFloor[floor.floor] ?? []} />

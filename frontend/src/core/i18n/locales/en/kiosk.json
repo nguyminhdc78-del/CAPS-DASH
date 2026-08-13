@@ -11,6 +11,8 @@
   "offlineNoDataYet": "Waiting for the first update…",
   "offlineDataAge": "Showing data from {{age}} ago",
   "noFloorData": "No floor data yet",
+  "floorLabel": "Floor {{floor}}",
+  "allFull": "No free bays on this floor",
   "freeCodesTitle": "Free bays",
   "freeCodesTruncated": "Showing first {{count}}",
   "searchTitle": "Find your car",
