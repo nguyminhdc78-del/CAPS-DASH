@@ -235,3 +235,50 @@ def test_a_search_that_found_nothing_is_audited_too(client: TestClient, guard, d
         select(AuditLog).where(AuditLog.action == AuditAction.PLATE_SEARCHED)
     ).scalar_one()
     assert entry.entity_id == "99Z99999"
+
+
+def test_one_misread_does_not_outvote_a_bay_read_correctly_nine_times(
+    client: TestClient, guard, db: Session
+):
+    """Reproduces what shipped to the board and broke the kiosk.
+
+    Bay A1 held `98A83355`. The detector read it nine times at 0.61-0.91, then
+    once produced `88C27999` at 0.54. Taking the newest reading made that one
+    bad frame the bay's answer, so a customer searching their own plate was
+    told their car was not there. Consensus is what makes the nine outweigh
+    the one.
+    """
+    camera = make_camera(db)
+    slot = make_slot(db, camera, "A1", SlotState.OCCUPIED)
+    for minutes in range(9):
+        add_read(db, slot, "98A83355", minutes_ago=30 + minutes, confidence=0.85)
+    add_read(db, slot, "88C27999", minutes_ago=1, confidence=0.54)
+    db.commit()
+
+    real = client.get("/api/plates/search?q=98A83355", headers=auth_headers(client, "guard"))
+    misread = client.get("/api/plates/search?q=88C27999", headers=auth_headers(client, "guard"))
+
+    assert [m["slot_code"] for m in real.json()["matches"]] == ["A1"]
+    assert misread.json()["matches"] == []
+
+
+def test_a_bay_read_only_poorly_still_answers_with_its_confidence(
+    client: TestClient, guard, db: Session
+):
+    """The confidence floor decides the vote; it does not silence the bay.
+
+    A bay whose only readings are poor still reports them, because a weak lead
+    a guard can weigh beats no answer at all. The floor exists to let good
+    readings beat bad ones, not to hide bays the detector struggled with.
+    """
+    camera = make_camera(db)
+    slot = make_slot(db, camera, "A1", SlotState.OCCUPIED)
+    add_read(db, slot, "30H83231", confidence=0.31, width=62)
+    db.commit()
+
+    match = client.get(
+        "/api/plates/search?q=30H83231", headers=auth_headers(client, "guard")
+    ).json()["matches"][0]
+
+    assert match["slot_code"] == "A1"
+    assert match["confidence"] == 0.31
