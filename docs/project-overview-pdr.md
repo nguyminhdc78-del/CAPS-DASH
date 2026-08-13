@@ -4,14 +4,14 @@
 
 Car parks (particularly basement facilities) are difficult to navigate when half-full. Residents and visitors waste time circling to find free spaces; security guards cannot give reliable guidance; and management lacks visibility into occupancy patterns for sizing and pricing.
 
-**CAPS-DASH** automates occupancy detection via YOLO vehicle detection and slot-polygon mapping, giving residents real-time counts (never which slot is occupied—privacy first), security actionable live views, and management historical trends.
+**CAPS-DASH** automates occupancy detection via YOLO vehicle detection and slot-polygon mapping. The authenticated dashboard shows residents real-time free-space counts (never which slot is occupied) and security live views with audit trails. An unauthenticated public kiosk adds free bay codes and allows partial-match licence-plate lookup—a deliberate privacy trade-off, accepted knowingly.
 
 ## User Tiers & Workflows
 
-### Resident
+### Resident (Authenticated Dashboard)
 - **Access**: Lobby kiosk or mobile; read-only dashboard showing floor-level free counts.
 - **Actions**: View free-space counts, check occupancy trends (last 7 days).
-- **Constraints**: Never sees which slot holds which car. Cannot access camera streams or configuration.
+- **Constraints**: Never sees which slot holds which car. Cannot access camera streams or configuration. Cannot search by licence plate.
 - **Value**: Reduces search time, improves experience.
 
 ### Security Officer
@@ -42,9 +42,9 @@ Car parks (particularly basement facilities) are difficult to navigate when half
 - Automated alerts: offline camera, overstay (> 12h), low disk.
 - Bilingual UI (Vietnamese default, English provided).
 - Deployment: Linux arm64 (Arduino UNO Q, QRB2210 SoC).
+- **Licence-plate reading and search (optional, off by default).** The authenticated staff route (`/api/plates/search`, security-and-above only, every search audited) was the original scope: a guard can find a car by its number at the desk. The public kiosk adds an unauthenticated route (`/api/public/plates/search`, partial-match, rate-limited, anonymous audit) where a customer can find their own bay. Both read the same plate table; the public surface accepts the risk of vehicle enumeration in exchange for customer convenience. `PLATE_READING_ENABLED` defaults to `false` (it stores plate numbers, which identify vehicles and persons), and `PUBLIC_KIOSK_ENABLED` defaults to `false` (enabling it is an explicit operator act). Plate rows are purged on the same retention schedule as history.
 
 ### Out of Scope
-- Licence-plate recognition (business case unconfirmed).
 - Smoke or fire detection (separate risk domain).
 - Multi-site federation or cloud sync (single-building only).
 - Mobile app native builds (web responsive on mobile).
@@ -58,11 +58,21 @@ Car parks (particularly basement facilities) are difficult to navigate when half
 
 ## Privacy Position
 
-**Camera images never leave the building.** ONNX inference runs on the server inside the locked facility. Residents see occupancy counts (X free slots on Floor B1) and occupancy trends (historical charts), never which slot holds which car. Security and admin see live camera streams with overlays, but images are not exported or transmitted outside the physical network.
+**Authenticated Dashboard (the default for residents and staff):**
 
-**Audit trail**: All user actions logged to database (login, logout, configuration changes). Audit logs are kept for 6 months and never exported.
+Camera images never leave the building. ONNX inference runs on the server inside the locked facility. The dashboard enforces role-based access:
+- Residents see occupancy counts (X free slots on Floor B1) and trends, never which slot holds which car.
+- Security staff see live camera streams with overlays and can search by licence plate (`/api/plates/search`, security-and-above only, every search audited).
+- Audit logs record all actions (login, logout, configuration changes); logs are kept for 6 months and never exported.
+- Credentials are hashed (argon2); session tokens are short-lived (15 min access, 7 day refresh) with reuse detection.
 
-**Credentials**: Stored hashed (argon2). Session tokens are short-lived (15 min access, 7 day refresh); refresh tokens are rotated per device with reuse detection to catch compromised tokens.
+**Public Kiosk (unauthenticated, behind a kill-switch):**
+
+The lobby kiosk is now public (no login required) and shows: (1) free bay codes (low-risk—an empty bay holds no car, so a code identifies a space, not a vehicle), and (2) partial-match licence-plate search (high-risk—anyone on the network can enumerate the car park and locate any vehicle).
+
+This trade-off was accepted knowingly. The public surface is deployed **internal-LAN-only** (not reachable from the internet). Mitigations are: (1) `PUBLIC_KIOSK_ENABLED=false` by default (enabling is an explicit operator act), (2) per-IP rate limit (10 searches/60s by default, env-tunable), and (3) anonymous audit logs (one row per search including client IP, never filtered). Search does not require login and is not counted in user-based rate limits.
+
+**Rate-limit assumption**: Sized on the assumption that each device holds its own LAN address. Exposing `/api/public/*` to the internet requires revisiting this budget and adding an nginx `limit_req` layer (out of scope while LAN-only). Under Docker, the proxy connects from the bridge gateway; without correct `FORWARDED_ALLOW_IPS` configuration, the whole building shares one rate-limit bucket.
 
 ## Success Criteria
 

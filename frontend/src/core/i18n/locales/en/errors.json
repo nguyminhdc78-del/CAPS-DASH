@@ -31,5 +31,6 @@
   "RANGE_TOO_WIDE": "That date range is too wide. Choose a shorter period.",
   "RANGE_INVALID": "The start date must come before the end date.",
   "NOT_IMPLEMENTED": "That feature is not available yet.",
-  "WS_TOO_MANY_CONNECTIONS": "Too many live viewers are connected. Try again shortly."
+  "WS_TOO_MANY_CONNECTIONS": "Too many live viewers are connected. Try again shortly.",
+  "PUBLIC_KIOSK_DISABLED": "The public display is not enabled."
 }

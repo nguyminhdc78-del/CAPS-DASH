@@ -99,7 +99,7 @@ export function CameraPage() {
 
 #### Vietnamese (VI)
 - **Formal tone** for admin/security features (create, delete, configure).
-- **Clear and direct** for resident features (kiosk display).
+- **Clear and direct** for public features (kiosk display, plate search).
 - **Action verbs**: "Thêm", "Sửa", "Xóa", "Lưu", "Hủy".
 
 #### English (EN)
@@ -112,11 +112,13 @@ export function CameraPage() {
 
 ## Layout & Responsiveness
 
-### Kiosk View (Lobby Dashboard)
+### Public Kiosk View (Lobby Dashboard — Unauthenticated)
 - **Screen**: 1080p or smaller, often landscape on a tablet.
-- **Text size**: Large (18px+), visible from 2 meters away.
-- **Touch targets**: Buttons ≥ 48px high for finger accuracy.
-- **Refresh**: Every 5 s, no animation flicker (CSS transitions only, not JS blinks).
+- **Text size**: Large (18px+), visible from 2 meters away. Input font size for plate entry must also be 2m-readable.
+- **Touch targets**: Buttons and input fields ≥ 48px high for finger accuracy.
+- **Plate search input**: Large, prominent (no on-screen keypad built; customers type from their phone or a wireless keyboard). After submit, the result displays and the input auto-clears after 60 seconds for shared-screen privacy.
+- **Free bay codes**: Displayed per floor, capped at 40 per floor with truncation visible ("showing first 40").
+- **Refresh**: Every 5 s for counts, no animation flicker (CSS transitions only, not JS blinks). Search results auto-clear after 60s.
 
 ### Desktop / Admin Pages
 - **Sidebar**: Fixed left (optional hamburger on mobile).

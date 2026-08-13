@@ -2,6 +2,7 @@ import {
   AlertOutlined,
   AppstoreOutlined,
   BarChartOutlined,
+  CarOutlined,
   DashboardOutlined,
   HistoryOutlined,
   SettingOutlined,
@@ -20,6 +21,7 @@ const LiveViewPage = lazy(() => import('@/features/live/live-view-page'))
 // Konva is a large dependency and only the ROI editor needs it. Lazy here is
 // what keeps it out of the initial bundle everyone else downloads.
 const RoiEditorPage = lazy(() => import('@/features/roi-editor/roi-editor-page'))
+const PlateSearchPage = lazy(() => import('@/features/plates/plate-search-page'))
 const HistoryPage = lazy(() => import('@/features/history/history-page'))
 const StatisticsPage = lazy(() => import('@/features/statistics/statistics-page'))
 const AlertsPage = lazy(() => import('@/features/alerts/alerts-page'))
@@ -79,6 +81,16 @@ export const APP_ROUTES: AppRoute[] = [
     path: '/cameras/:cameraId/roi',
     element: <RoiEditorPage />,
     minRole: 'admin',
+  },
+  {
+    // Security and above only, matching the backend: a plate identifies a
+    // vehicle and through it a person, and the PDR promises residents are
+    // never shown which bay holds which car.
+    path: '/plates',
+    element: <PlateSearchPage />,
+    minRole: 'security',
+    labelKey: 'plate:title',
+    icon: <CarOutlined />,
   },
   {
     path: '/history',

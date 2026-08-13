@@ -94,6 +94,24 @@ export const queryKeys = {
     all: () => ['alerts'] as const,
     list: (filters: AlertListFilters = {}) => ['alerts', 'list', filters] as const,
   },
+  // Keyed by the normalised query AND the vacated toggle: they are two
+  // different questions ("where is it" vs "where was it last seen") with two
+  // different answers, and sharing a key would serve one as the other.
+  plates: {
+    all: () => ['plates'] as const,
+    search: (query: string, includeVacated: boolean) =>
+      ['plates', 'search', query, includeVacated] as const,
+  },
+  // Deliberately NOT nested under `summary`/`plates` above: those serve the
+  // authenticated staff endpoints (`/summary`, `/plates/search`). The public
+  // kiosk hits separately-named `/public/*` endpoints with a narrower
+  // response shape, and sharing a key would let a cached authenticated
+  // response be served back as a public one, or vice versa.
+  publicKiosk: {
+    all: () => ['publicKiosk'] as const,
+    summary: () => ['publicKiosk', 'summary'] as const,
+    plateSearch: (query: string) => ['publicKiosk', 'plateSearch', query] as const,
+  },
   system: {
     all: () => ['system'] as const,
     info: () => ['system', 'info'] as const,

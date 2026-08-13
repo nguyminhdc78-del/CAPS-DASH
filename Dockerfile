@@ -82,4 +82,12 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 # racing to write the same SQLite file. `app_factory.py`'s runtime guard
 # (`WEB_CONCURRENCY`) is defence in depth for this same rule, not a
 # replacement for hard-coding it here.
+#
+# uvicorn reads FORWARDED_ALLOW_IPS from the environment natively (no flag
+# needed here). It MUST be set to the bridge gateway address as uvicorn sees
+# it behind whatever reverse proxy sits in front of this container - left at
+# the Settings default of 127.0.0.1, every request looks like it came from the
+# gateway, which collapses the public-kiosk rate limit and audit trail into
+# one shared bucket for every client. "*" is refused at startup once
+# PUBLIC_KIOSK_ENABLED is true.
 CMD ["uvicorn", "caps_dash.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from ..config.settings import Settings
 from ..db.enums import AuditAction
-from ..db.models import Alert, RefreshSession, SlotStateHistory
+from ..db.models import Alert, PlateRead, RefreshSession, SlotStateHistory
 from ..db.types import utc_now
 from . import audit_service
 
@@ -38,6 +38,7 @@ HISTORY_BATCH_SIZE = 5000
 class PurgeResult:
     deleted_history_rows: int
     deleted_alert_rows: int
+    deleted_plate_rows: int = 0
 
 
 def purge(
@@ -68,9 +69,11 @@ def purge(
     if dry_run:
         history_count = _count_history_before(session, cutoff)
         alert_count = _count_purgeable_alerts_before(session, cutoff)
+        plate_count = _count_plate_reads_before(session, cutoff)
     else:
         history_count = _delete_history_before(session, cutoff)
         alert_count = _delete_purgeable_alerts_before(session, cutoff)
+        plate_count = _delete_plate_reads_before(session, cutoff)
 
     audit_service.record(
         session,
@@ -84,11 +87,38 @@ def purge(
             "cutoff": cutoff.isoformat(),
             "history_rows": history_count,
             "alert_rows": alert_count,
+            "plate_rows": plate_count,
         },
         client_ip=client_ip,
     )
     session.commit()
-    return PurgeResult(deleted_history_rows=history_count, deleted_alert_rows=alert_count)
+    return PurgeResult(
+        deleted_history_rows=history_count,
+        deleted_alert_rows=alert_count,
+        deleted_plate_rows=plate_count,
+    )
+
+
+def _count_plate_reads_before(session: Session, cutoff: dt.datetime) -> int:
+    return int(
+        session.execute(
+            select(func.count()).select_from(PlateRead).where(PlateRead.read_at < cutoff)
+        ).scalar_one()
+    )
+
+
+def _delete_plate_reads_before(session: Session, cutoff: dt.datetime) -> int:
+    """Plate readings expire on the same schedule as occupancy history.
+
+    Not a separate, longer window. A plate identifies a vehicle and through it
+    a person, so it is the row in this database with the strongest claim to a
+    short life - keeping it after the occupancy record it describes has gone
+    would leave the identifying half of the pair behind and the innocuous half
+    deleted, which is exactly backwards.
+    """
+    result = session.execute(delete(PlateRead).where(PlateRead.read_at < cutoff))
+    session.commit()
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def purge_expired_refresh_sessions(session: Session, *, now: dt.datetime | None = None) -> int:

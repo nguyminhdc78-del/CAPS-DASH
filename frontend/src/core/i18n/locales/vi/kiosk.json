@@ -10,5 +10,18 @@
   "offlineTitle": "Mất kết nối",
   "offlineNoDataYet": "Đang chờ dữ liệu đầu tiên…",
   "offlineDataAge": "Đang hiển thị dữ liệu từ {{age}} trước",
-  "noFloorData": "Chưa có dữ liệu theo tầng"
+  "noFloorData": "Chưa có dữ liệu theo tầng",
+  "freeCodesTitle": "Ô trống",
+  "freeCodesTruncated": "Hiển thị {{count}} ô đầu tiên",
+  "searchTitle": "Tìm xe của bạn",
+  "searchPlaceholder": "Nhập biển số xe",
+  "searchButton": "Tìm kiếm",
+  "searchAriaLabel": "Tìm kiếm biển số xe của bạn",
+  "tooShort": "Nhập ít nhất {{min}} ký tự",
+  "noMatches": "Không tìm thấy \"{{query}}\"",
+  "noMatchesHint": "Biển số của bạn có thể chưa được đọc, hoặc xe chưa vào bãi đỗ này.",
+  "foundAt": "Tìm thấy tại",
+  "disabledTitle": "Màn hình công khai chưa được bật",
+  "disabledHint": "Đặt PUBLIC_KIOSK_ENABLED=true để bật màn hình này.",
+  "rateLimited": "Tìm kiếm quá nhiều lần. Vui lòng chờ {{seconds}} giây rồi thử lại."
 }

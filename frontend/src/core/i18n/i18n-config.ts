@@ -10,6 +10,7 @@ import enErrors from './locales/en/errors.json'
 import enHistory from './locales/en/history.json'
 import enKiosk from './locales/en/kiosk.json'
 import enLive from './locales/en/live.json'
+import enPlate from './locales/en/plate.json'
 import enRoi from './locales/en/roi.json'
 import enStats from './locales/en/stats.json'
 import enSlot from './locales/en/slot.json'
@@ -24,6 +25,7 @@ import viErrors from './locales/vi/errors.json'
 import viHistory from './locales/vi/history.json'
 import viKiosk from './locales/vi/kiosk.json'
 import viLive from './locales/vi/live.json'
+import viPlate from './locales/vi/plate.json'
 import viRoi from './locales/vi/roi.json'
 import viStats from './locales/vi/stats.json'
 import viSlot from './locales/vi/slot.json'
@@ -57,6 +59,7 @@ const resources = {
     history: viHistory,
     stats: viStats,
     live: viLive,
+    plate: viPlate,
     kiosk: viKiosk,
   },
   en: {
@@ -73,6 +76,7 @@ const resources = {
     history: enHistory,
     stats: enStats,
     live: enLive,
+    plate: enPlate,
     kiosk: enKiosk,
   },
 } as const

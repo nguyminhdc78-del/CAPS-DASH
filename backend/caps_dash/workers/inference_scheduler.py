@@ -39,7 +39,9 @@ from .inference_runner import InferenceOutcome, run_inference
 # Scoring a result - fitting the map, voting, persisting changes - is the
 # meaning of a tick and stays in `camera_loop`. Passed in as a callback so this
 # module owns concurrency only, and so the two do not import each other.
-ApplyFn = Callable[[CameraContext, InferenceOutcome], Awaitable[None]]
+# The frame is handed over too: reading a plate needs the pixels the verdict
+# was reached on, and re-deriving them later would read a different moment.
+ApplyFn = Callable[[CameraContext, InferenceOutcome, np.ndarray], Awaitable[None]]
 
 
 class InferenceScheduler:
@@ -136,4 +138,4 @@ class InferenceScheduler:
         # "changed" from here on means changed since this result - not since
         # whatever happened to be on screen when the run was started.
         context.change_gate.mark_inferred(image)
-        await apply(context, outcome)
+        await apply(context, outcome, image)

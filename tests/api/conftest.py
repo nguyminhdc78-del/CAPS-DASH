@@ -103,3 +103,73 @@ def login(client: TestClient, username: str, password: str = PASSWORD):
 def auth_headers(client: TestClient, username: str) -> dict[str, str]:
     token = login(client, username).json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def public_settings(tmp_path) -> Settings:
+    """Settings with public kiosk enabled for testing anonymous endpoints."""
+    return Settings(
+        app_env="dev",
+        secret_key="test-signing-key-not-for-production-0123456789",
+        database_url=f"sqlite:///{tmp_path / 'public.db'}",
+        backup_dir=tmp_path / "backups",
+        spa_dist_dir=tmp_path / "no-frontend",
+        log_json=False,
+        login_max_attempts=3,
+        login_window_s=60,
+        # Public kiosk flags - ON for these tests
+        public_kiosk_enabled=True,
+        plate_reading_enabled=True,
+        # Short window so the rate-limit test does not sleep.
+        public_kiosk_max_searches=3,
+        public_kiosk_window_s=60,
+    )
+
+
+@pytest.fixture
+def public_app(public_settings: Settings) -> FastAPI:
+    """App with public kiosk enabled."""
+    engine = create_db_engine(public_settings.database_url)
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    return create_app(public_settings)
+
+
+@pytest.fixture
+def public_client(public_app: FastAPI) -> Iterator[TestClient]:
+    """TestClient for public endpoints, with kiosk enabled."""
+    with TestClient(public_app) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def public_db(public_app: FastAPI, public_client: TestClient) -> Iterator[Session]:
+    """DB session for public kiosk tests."""
+    del public_client  # ordering only: ensures the schema exists first
+    factory = public_app.state.caps.require_session_factory()
+    session = factory()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
+def plate_reading_off_settings(public_settings: Settings) -> Settings:
+    """Public kiosk ON, plate reading OFF - the second of the two flags.
+
+    This is a real deployment state, not a contrived one: an operator may run
+    the lobby board for free-bay codes while leaving plate reading off. The
+    summary must still serve (with `plate_search_enabled` false, so the client
+    hides the box) while the search route 404s.
+    """
+    return public_settings.model_copy(update={"plate_reading_enabled": False})
+
+
+@pytest.fixture
+def plate_reading_off_client(plate_reading_off_settings: Settings) -> Iterator[TestClient]:
+    engine = create_db_engine(plate_reading_off_settings.database_url)
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    with TestClient(create_app(plate_reading_off_settings)) as test_client:
+        yield test_client

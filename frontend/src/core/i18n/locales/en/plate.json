@@ -1,0 +1,18 @@
+{
+  "title": "Find a car",
+  "search": "Search",
+  "searchPlaceholder": "Plate number, or part of one",
+  "searchAriaLabel": "Search for a plate number",
+  "searchHint": "Dashes, dots and spaces are ignored - type it as you see it.",
+  "tooShort": "Type at least {{min}} characters.",
+  "includeVacated": "Include bays the car has left",
+  "foundAt": "Parked in",
+  "confidence": "{{value}}% confident",
+  "provenance": "The plate was {{width}} px wide in the frame. Wider readings are more reliable.",
+  "shaky": "Check this one",
+  "shakyHint": "Read with low confidence - worth looking at the car before telling anyone.",
+  "vacated": "Bay now empty",
+  "vacatedHint": "This is where the car was last seen. It has since left the bay.",
+  "noMatches": "No car found for \"{{query}}\".",
+  "noMatchesHint": "A plate is only recorded when a camera could read it. Cars parked tail-in, at an angle, or in poor light often park without one being read - so no match does not mean the car is not here."
+}

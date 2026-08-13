@@ -1,11 +1,11 @@
-"""Periodic job: sweep idle login rate-limiter keys and expired
-`refresh_sessions` rows.
+"""Periodic job: sweep idle rate-limiter keys and expired `refresh_sessions`
+rows.
 
 Two unrelated cleanups sharing one schedule slot (hourly) because both are
 "drop rows/keys nobody can use productively again" and both are cheap:
-- `SlidingWindowLimiter.sweep_idle()` - an in-process dict that otherwise
-  grows one entry per distinct username ever attempted (`security/
-  rate_limiter.py`).
+- `SlidingWindowLimiter.sweep_idle()`, run for every limiter passed in - each
+  is an in-process dict that otherwise grows one entry per distinct username
+  or client IP ever attempted (`security/rate_limiter.py`).
 - Expired/revoked/rotated `refresh_sessions` rows (validation session 1:
   otherwise this table also grows without bound).
 """
@@ -22,8 +22,8 @@ from ..services import retention_service
 logger = get_logger(__name__)
 
 
-def run(factory: sessionmaker[Session], login_limiter: SlidingWindowLimiter) -> None:
-    idle_keys_removed = login_limiter.sweep_idle()
+def run(factory: sessionmaker[Session], *limiters: SlidingWindowLimiter) -> None:
+    idle_keys_removed = sum(limiter.sweep_idle() for limiter in limiters)
     with session_scope(factory) as session:
         refresh_sessions_purged = retention_service.purge_expired_refresh_sessions(session)
     logger.info(

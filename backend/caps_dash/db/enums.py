@@ -92,6 +92,9 @@ class AuditAction(StrEnum):
     CONFIDENCE_CHANGED = "confidence_changed"
     BACKUP_CREATED = "backup_created"
     DATA_PURGED = "data_purged"
+    # Who looked for which plate. A plate identifies a vehicle and through it
+    # a person, so the searching is itself worth recording.
+    PLATE_SEARCHED = "plate_searched"
 
 
 def values(enum_cls: type[StrEnum]) -> list[str]:

@@ -55,9 +55,20 @@ describe('DashboardPage resident privacy', () => {
       </QueryClientProvider>,
     )
 
-    await waitFor(() => {
-      expect(within(screen.getByRole('group', { name: 'Free' })).getByText('6')).toBeInTheDocument()
-    })
+    // Generous timeout on purpose: the headline counters animate through
+    // `useCountUp` (500 ms of `requestAnimationFrame`), and jsdom's rAF ticks
+    // on wall-clock, so under a loaded CI machine the count-up is still
+    // in flight when `waitFor`'s 1 s default expires - the test then reads a
+    // partial value (4 of 6) and fails intermittently. The assertion is right;
+    // only the budget was too tight for an animated counter.
+    await waitFor(
+      () => {
+        expect(
+          within(screen.getByRole('group', { name: 'Free' })).getByText('6'),
+        ).toBeInTheDocument()
+      },
+      { timeout: 4000 },
+    )
 
     // Floor bars ARE shown to residents.
     expect(screen.getByText('Overview')).toBeInTheDocument()

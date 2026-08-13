@@ -130,6 +130,10 @@ All configuration from environment; never from `.env` in production. This table 
 | REFRESH_TOKEN_TTL_DAYS | int | `7` | Refresh token lifetime (days). |
 | LOGIN_MAX_ATTEMPTS | int | `5` | Attempts before lockout. |
 | LOGIN_WINDOW_S | int | `300` | Window for lockout (seconds). |
+| PUBLIC_KIOSK_ENABLED | bool | `false` | Enable the public `/kiosk` endpoint (unauthenticated lobby display). Requires PLATE_READING_ENABLED for plate search. |
+| PUBLIC_KIOSK_MAX_SEARCHES | int | `10` | Max partial-match plate searches per IP per window (public kiosk only). |
+| PUBLIC_KIOSK_WINDOW_S | int | `60` | Rate-limit window for plate searches (seconds). Budget sized on LAN-only deployment; revisit if exposed to internet. |
+| FORWARDED_ALLOW_IPS | CSV | `127.0.0.1` | Comma-separated IPs from which to trust `X-Forwarded-For` headers (required for correct client IP extraction behind a reverse proxy). See Proxy-trust subsection below. |
 | **Storage** |
 | DATABASE_URL | string | `sqlite:///data/caps.db` | SQLite path. Use absolute path. |
 | BACKUP_DIR | string | `data/backups` | Backup directory. Must exist and be writable. |
@@ -150,6 +154,7 @@ All configuration from environment; never from `.env` in production. This table 
 | SNAPSHOT_MAX_AGE_S | float | `10.0` | Reuse cached snapshot in ROI editor for this long. |
 | MIN_INFERENCE_INTERVAL_S | float | `0.0` | Floor on the gap between two detector runs, independent of the poll interval. `0` disables it. **Inert at any tick ≥ 1.5 s** - it gates only change-triggered runs, whose spacing is already bounded by the tick - so it is off by default now that the primary path polls. Set it (1.5 was measured good) on a streaming camera, where a fast tick would otherwise run the detector back to back. |
 | MOTION_FORCE_INTERVAL_S | float | `30.0` | Inference runs anyway this often even when the change gate sees nothing, so slow drift (dusk, a light switched on, auto-exposure creeping) cannot keep the detector asleep. This is the **ceiling on how long the system may be wrong** when the gate misses a real change. Raised from 10 s when the tick went from 0.2 s to 2 s: at 10 s every camera force-infers every 5 ticks and competes with genuine change-triggered runs. A deliberate trade of detection latency for headroom, not a free win. |
+| PLATE_READING_ENABLED | bool | `false` | Read the plate of a car when its bay fills. Enables: (1) the staff route `/api/plates/search` (security-and-above, every search audited, logged with username); (2) the public kiosk plate search when combined with `PUBLIC_KIOSK_ENABLED=true` (unauthenticated, rate-limited, anonymous audit with client IP). **Off by default and that is the honest default**: it costs ~1 s of the single inference worker per arrival (measured on the board), it downloads models from HuggingFace on first use (a host with no internet must be able to decline), and it stores plate numbers, which identify vehicles and persons. Plate rows are purged on the `RETENTION_MONTHS` schedule with everything else. |
 | MOTION_CHANGE_THRESHOLD | float | `8.0` | Mean absolute difference (64x48 greyscale sample, 0-255) below which a frame is treated as unchanged and skipped. Calibrated against the sensor noise floor, not the tick - see the exposure-lock note under "Camera notes". |
 | **Reporting** |
 | HISTORY_DEFAULT_SPAN_DAYS | int | `7` | Default history query range. |
@@ -257,6 +262,43 @@ server {
 
 See `deploy/nginx-reverse-proxy.conf.example` for the full template.
 
+### Proxy Trust and Real Client IPs
+
+**Why this matters**: The public kiosk endpoint rates-limits by client IP and logs client IP in audit rows. A misconfigured proxy passes the proxy's own address instead of the client's, causing the whole building to share one rate-limit bucket and defeating the audit trail.
+
+**Systemd (local nginx)**:
+```bash
+FORWARDED_ALLOW_IPS=127.0.0.1
+```
+Nginx runs on the same host; requests come from `127.0.0.1`. uvicorn automatically extracts the client IP from `X-Forwarded-For` when the connection is trusted.
+
+**Docker (app behind a local proxy, e.g., docker-compose)**:
+```bash
+# The proxy connects from the Docker bridge gateway, NOT 127.0.0.1
+# Find the gateway IP of your compose network:
+docker network inspect <network-name> | grep Gateway
+# Typical value: 172.17.0.1 or 172.19.0.1
+
+FORWARDED_ALLOW_IPS=172.19.0.1
+```
+
+**Production (app behind a cloud or distributed proxy)**:
+```bash
+# Contact your proxy operator for the IP(s) their connections originate from.
+# Common examples:
+# - AWS ALB / NLB: the region's VPC CIDR
+# - Cloudflare: their published IP list
+# - Local reverse proxy on a different host: that host's IP
+
+FORWARDED_ALLOW_IPS=10.0.1.5
+# or for multiple proxies:
+FORWARDED_ALLOW_IPS=10.0.1.5,10.0.1.6,10.0.2.0/24
+```
+
+**Do not use `*`**: If `FORWARDED_ALLOW_IPS=*`, the app trusts `X-Forwarded-For` from any source, including the client themselves. This defeats both rate limiting (a client can claim any IP) and audit (the logged IP is client-controlled, not the real source).
+
+**Prod safety**: When the public kiosk is enabled (`PUBLIC_KIOSK_ENABLED=true`), the app refuses to start if `FORWARDED_ALLOW_IPS=*` and `APP_ENV=prod`. Fix by setting it to the actual proxy IP(s).
+
 ## Backup & Restore
 
 ### Backup (Manual or Automated)
@@ -346,7 +388,14 @@ sudo systemctl start caps-dash
 1. Monitor logs: `docker compose logs -f app` or `sudo journalctl -u caps-dash -f`.
 2. Check health: `curl http://localhost:8000/api/health`.
 3. Test UI: Login, navigate pages, verify data integrity.
-4. Roll back if needed: Restore database backup and git checkout previous version.
+4. **If upgrading to public kiosk version**: The `/kiosk` route now calls the public API. Unless you set `PUBLIC_KIOSK_ENABLED=true`, the kiosk will show "not enabled". This is intentional; enable the feature explicitly if you want it. See [Privacy Position](project-overview-pdr.md#privacy-position).
+5. Roll back if needed: Restore database backup and git checkout previous version.
+
+### Audit Table Growth (Public Kiosk Note)
+
+When the public kiosk is enabled, `audit_logs` grows at whatever rate the rate limit permits. The default 10 searches per 60 seconds per IP means a lobby with N concurrent devices searching once each per minute produces ~N audit rows per minute, or ~1440N rows per day. The `audit_logs` table **is never purged** (`services/retention_service.py`); it grows indefinitely.
+
+**Flash-wear planning**: An Arduino UNO Q has ~32 GB flash. A lobby averaging 10 searches per minute produces ~5.2 million rows per year. SQLite without vacuuming, ~200 bytes per audit row (including indices), occupies ~1 GB per million rows. Plan disk capacity accordingly, or enable `PLATE_READING_ENABLED=false` to hide the plate-search affordance and keep audit growth to login/config changes only.
 
 ## Single Worker Constraint
 
@@ -834,12 +883,38 @@ so backup storage is roughly `keep_count x database size`.
 
 **Runtime (deployed in image)**:
 - Apache-2.0: onnxruntime, numpy, opencv-python-headless.
-- MIT: FastAPI, Pydantic, SQLAlchemy, React, Ant Design, others.
+- MIT: FastAPI, Pydantic, SQLAlchemy, React, Ant Design, fast-alpr,
+  fast-plate-ocr, others.
 
 **Development-only (not deployed)**:
 - AGPL-3.0: ultralytics (used only to export ONNX; never deployed).
 
 CI asserts that `pip freeze` inside the built image contains no AGPL code.
+
+**Plate models are downloaded, not committed.** Unlike the vehicle detector -
+whose ONNX is a build artefact under `models/` - `fast-alpr` fetches its
+weights from the upstream projects' GitHub releases the first time a plate is
+read, into two caches under `$HOME`:
+
+| Cache | Contents |
+|-------|----------|
+| `$HOME/.cache/open-image-models` | Plate **detector** (`yolo-v9-t-384-license-plate-end2end`) |
+| `$HOME/.cache/fast-plate-ocr` | **OCR** model + config (`cct-s-v1-global-model`) |
+
+Both paths are hardcoded to `Path.home()` by the upstream libraries; neither
+offers a cache-directory setting. What follows from that:
+
+- **`caps-dash.service` sets `Environment=HOME=/var/lib/caps-dash`.** The unit
+  runs with `ProtectHome=true`, which makes `/home` and `/root` empty - without
+  the override the first read would have nowhere to write. `/var/lib/caps-dash`
+  is already in `ReadWritePaths`. Docker is unaffected (no `ProtectHome`), but
+  the cache lives in the container layer and is re-downloaded on every
+  `docker run` unless the path is mounted.
+- **The first read after a fresh install needs internet**, roughly 20 MB. It
+  fails soft: the read returns nothing, the camera keeps counting cars, and
+  `plate_read_failed` is logged.
+- **On an air-gapped host**, copy both cache directories from a machine that
+  has run a read once, or leave the feature off.
 
 ## Support & Escalation
 

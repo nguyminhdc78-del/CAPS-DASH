@@ -62,3 +62,11 @@ class ErrorCode(StrEnum):
     # Operations
     BACKUP_FAILED = "BACKUP_FAILED"
     NOT_IMPLEMENTED = "NOT_IMPLEMENTED"
+
+    # Public kiosk
+    # 404: raised when the public surface is off (PUBLIC_KIOSK_ENABLED=false)
+    # or when a plate search is requested while PLATE_READING_ENABLED is off
+    # (nothing to search - the search affordance should be hidden by the
+    # frontend before this is ever reached, but the backend refuses either
+    # way rather than trusting that it was).
+    PUBLIC_KIOSK_DISABLED = "PUBLIC_KIOSK_DISABLED"

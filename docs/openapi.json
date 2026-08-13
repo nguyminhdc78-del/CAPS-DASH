@@ -122,7 +122,8 @@
           "alert_acknowledged",
           "confidence_changed",
           "backup_created",
-          "data_purged"
+          "data_purged",
+          "plate_searched"
         ],
         "title": "AuditAction",
         "type": "string"
@@ -1299,6 +1300,85 @@
         "title": "ParkingSessionResponse",
         "type": "object"
       },
+      "PlateMatchResponse": {
+        "description": "One car and the bay it is in.",
+        "properties": {
+          "camera_code": {
+            "title": "Camera Code",
+            "type": "string"
+          },
+          "camera_id": {
+            "title": "Camera Id",
+            "type": "integer"
+          },
+          "confidence": {
+            "description": "Detector confidence in the plate, 0-1",
+            "title": "Confidence",
+            "type": "number"
+          },
+          "floor": {
+            "title": "Floor",
+            "type": "string"
+          },
+          "plate": {
+            "title": "Plate",
+            "type": "string"
+          },
+          "plate_width_px": {
+            "description": "How wide the plate was, in pixels",
+            "title": "Plate Width Px",
+            "type": "integer"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "slot_code": {
+            "title": "Slot Code",
+            "type": "string"
+          },
+          "slot_state": {
+            "title": "Slot State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plate",
+          "slot_code",
+          "floor",
+          "camera_id",
+          "camera_code",
+          "slot_state",
+          "read_at",
+          "confidence",
+          "plate_width_px"
+        ],
+        "title": "PlateMatchResponse",
+        "type": "object"
+      },
+      "PlateSearchResponse": {
+        "properties": {
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/PlateMatchResponse"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
+          "query": {
+            "description": "The normalised query actually searched for",
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "matches"
+        ],
+        "title": "PlateSearchResponse",
+        "type": "object"
+      },
       "PolygonModel": {
         "description": "A slot outline in source-frame pixel coordinates.",
         "properties": {
@@ -1326,6 +1406,86 @@
           "points"
         ],
         "title": "PolygonModel",
+        "type": "object"
+      },
+      "PublicOccupancySummary": {
+        "description": "Counts (reused verbatim, never widened) plus the codes of empty bays.",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/OccupancySummary"
+          },
+          "free_codes_by_floor": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Free Codes By Floor",
+            "type": "object"
+          },
+          "plate_search_enabled": {
+            "title": "Plate Search Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "counts",
+          "free_codes_by_floor",
+          "plate_search_enabled"
+        ],
+        "title": "PublicOccupancySummary",
+        "type": "object"
+      },
+      "PublicPlateMatch": {
+        "description": "One car and the bay it is in - nothing a customer cannot act on.\n\nDeliberately absent, compared to the staff-only `PlateMatchResponse`:\n`camera_id`, `camera_code`, `confidence`, `plate_width_px`. A customer\ncannot weigh detector confidence or act on a camera id, and\n`camera_code` is a live-view route key a stranger has no business\nholding.",
+        "properties": {
+          "floor": {
+            "title": "Floor",
+            "type": "string"
+          },
+          "plate": {
+            "title": "Plate",
+            "type": "string"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "slot_code": {
+            "title": "Slot Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plate",
+          "slot_code",
+          "floor",
+          "read_at"
+        ],
+        "title": "PublicPlateMatch",
+        "type": "object"
+      },
+      "PublicPlateSearchResponse": {
+        "properties": {
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/PublicPlateMatch"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "matches"
+        ],
+        "title": "PublicPlateSearchResponse",
         "type": "object"
       },
       "PurgeRequest": {
@@ -2347,7 +2507,7 @@
     }
   },
   "info": {
-    "description": "Car-park administration for the CAPS system.\n\nAll vehicle detection runs on this host; camera images never leave the\nbuilding. Residents see counts only - which slot holds which car is private.\n",
+    "description": "Car-park administration for the CAPS system.\n\nAll vehicle detection runs on this host; camera images never leave the\nbuilding.\n\n**Authenticated API** (`/api`): Residents see occupancy counts only (which slot\nholds which car is private). Security staff can search by licence plate. Admin\ncan manage cameras and ROI.\n\n**Public Kiosk** (`/api/public`, gated by `PUBLIC_KIOSK_ENABLED`): Shows free\nbay codes and (when `PLATE_READING_ENABLED=true`) allows partial-match\nlicence-plate search for customers to find their own car. This is a deliberate\nprivacy trade-off - anyone on the network can enumerate the car park and\nlocate a vehicle. Mitigated by: kill-switch (default off), per-IP rate limit,\nand anonymous audit. See `docs/project-overview-pdr.md` Privacy Position.\n",
     "title": "CAPS-DASH",
     "version": "0.1.0"
   },
@@ -5919,6 +6079,354 @@
         "summary": "Slot state changes",
         "tags": [
           "History"
+        ]
+      }
+    },
+    "/api/plates/search": {
+      "get": {
+        "operationId": "search_plates_api_plates_search_get",
+        "parameters": [
+          {
+            "description": "Plate, or part of one. Separators are ignored.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Plate, or part of one. Separators are ignored.",
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Also return bays that have since emptied. Off by default: the usual question is where a car IS, and sending a guard to a bay the car has left is worse than returning nothing, because they will trust it and walk there.",
+            "in": "query",
+            "name": "include_vacated",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Also return bays that have since emptied. Off by default: the usual question is where a car IS, and sending a guard to a bay the car has left is worse than returning nothing, because they will trust it and walk there.",
+              "title": "Include Vacated",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlateSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication required or failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Insufficient role"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with existing data"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unexpected server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Find which bay a plate is parked in",
+        "tags": [
+          "Plates"
+        ]
+      }
+    },
+    "/api/public/plates/search": {
+      "get": {
+        "operationId": "search_public_plates_api_public_plates_search_get",
+        "parameters": [
+          {
+            "description": "Plate, or part of one. Separators are ignored.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Plate, or part of one. Separators are ignored.",
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicPlateSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication required or failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Insufficient role"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with existing data"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unexpected server error"
+          }
+        },
+        "summary": "Public partial-match plate search",
+        "tags": [
+          "Public kiosk"
+        ]
+      }
+    },
+    "/api/public/summary": {
+      "get": {
+        "operationId": "get_public_summary_api_public_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicOccupancySummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication required or failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Insufficient role"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with existing data"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unexpected server error"
+          }
+        },
+        "summary": "Public occupancy counts and FREE bay codes",
+        "tags": [
+          "Public kiosk"
         ]
       }
     },

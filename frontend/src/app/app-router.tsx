@@ -15,13 +15,13 @@ const router = createBrowserRouter([
   {
     // Outside AppLayout on purpose: the kiosk is a lobby display, and a
     // sidebar, header and breadcrumb on a screen nobody can click are just
-    // clutter. It still requires a session - resident tier, counts only.
+    // clutter. Unauthenticated ON PURPOSE - this is a public lobby screen,
+    // not a resident view. Gating is done server-side by
+    // PUBLIC_KIOSK_ENABLED (see use-kiosk-summary.ts / KioskDisabledNotice),
+    // not by a session: no `RequireRoleRoute` here means no redirect to
+    // /login and no flash of a login page for an anonymous visitor.
     path: '/kiosk',
-    element: (
-      <RequireRoleRoute minRole="resident">
-        <KioskPage />
-      </RequireRoleRoute>
-    ),
+    element: <KioskPage />,
   },
   {
     element: <AppLayout />,

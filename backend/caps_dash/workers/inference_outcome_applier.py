@@ -10,16 +10,21 @@ is what makes it worth its own module rather than a branch in the loop.
 
 from __future__ import annotations
 
+import numpy as np
+
 from ..observability.logging_setup import get_logger
 from ..services.slot_state_service import persist_state_changes
 from ..vision.domain import SlotState, count_detections_per_slot, occupied_slot_ids
 from .camera_context import CameraContext
 from .inference_runner import InferenceOutcome
+from .plate_capture import read_plates_for_filled_slots
 
 logger = get_logger(__name__)
 
 
-async def apply_outcome(context: CameraContext, outcome: InferenceOutcome) -> None:
+async def apply_outcome(
+    context: CameraContext, outcome: InferenceOutcome, image: np.ndarray
+) -> None:
     """Vote on one detection, persist what changed, keep it for the live view."""
     log = logger.bind(camera_id=context.camera_id, camera_code=context.config.code)
 
@@ -59,6 +64,7 @@ async def apply_outcome(context: CameraContext, outcome: InferenceOutcome) -> No
             changes,
         )
         log.info("slot_states_changed", changes=len(changes))
+        await read_plates_for_filled_slots(context, changes, image, fitted, log)
 
     overlapping = [
         code

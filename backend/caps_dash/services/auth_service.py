@@ -91,7 +91,7 @@ def _fail_login(limiter: SlidingWindowLimiter, keys: list[str]) -> NoReturn:
     a free account-enumeration oracle.
     """
     for key in keys:
-        limiter.record_failure(key)
+        limiter.record(key)
     raise AuthError(
         "Incorrect username or password", code=ErrorCode.AUTH_INVALID_CREDENTIALS
     )

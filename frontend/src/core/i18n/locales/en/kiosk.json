@@ -10,5 +10,18 @@
   "offlineTitle": "Offline",
   "offlineNoDataYet": "Waiting for the first update…",
   "offlineDataAge": "Showing data from {{age}} ago",
-  "noFloorData": "No floor data yet"
+  "noFloorData": "No floor data yet",
+  "freeCodesTitle": "Free bays",
+  "freeCodesTruncated": "Showing first {{count}}",
+  "searchTitle": "Find your car",
+  "searchPlaceholder": "Enter your plate number",
+  "searchButton": "Search",
+  "searchAriaLabel": "Search for your licence plate",
+  "tooShort": "Enter at least {{min}} characters",
+  "noMatches": "No match for \"{{query}}\"",
+  "noMatchesHint": "Your plate may not have been read yet, or it has not entered this car park.",
+  "foundAt": "Found at",
+  "disabledTitle": "Public display not enabled",
+  "disabledHint": "Set PUBLIC_KIOSK_ENABLED=true to turn this screen on.",
+  "rateLimited": "Too many searches. Please wait {{seconds}}s and try again."
 }

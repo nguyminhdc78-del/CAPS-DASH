@@ -26,7 +26,18 @@ DESCRIPTION = """\
 Car-park administration for the CAPS system.
 
 All vehicle detection runs on this host; camera images never leave the
-building. Residents see counts only - which slot holds which car is private.
+building.
+
+**Authenticated API** (`/api`): Residents see occupancy counts only (which slot
+holds which car is private). Security staff can search by licence plate. Admin
+can manage cameras and ROI.
+
+**Public Kiosk** (`/api/public`, gated by `PUBLIC_KIOSK_ENABLED`): Shows free
+bay codes and (when `PLATE_READING_ENABLED=true`) allows partial-match
+licence-plate search for customers to find their own car. This is a deliberate
+privacy trade-off - anyone on the network can enumerate the car park and
+locate a vehicle. Mitigated by: kill-switch (default off), per-IP rate limit,
+and anonymous audit. See `docs/project-overview-pdr.md` Privacy Position.
 """
 
 
@@ -84,6 +95,15 @@ def create_app(settings: Settings) -> FastAPI:
 
     # Middleware is applied bottom-up, so the request id is bound first and
     # remains available to everything above it, including CORS rejections.
+    #
+    # Deliberately NOT adding uvicorn's `ProxyHeadersMiddleware` here. uvicorn
+    # already wraps the whole ASGI app in one copy of it whenever
+    # `proxy_headers=True` (the default) - see `Config.load()` - using
+    # `forwarded_allow_ips`/`FORWARDED_ALLOW_IPS`. A second copy inside
+    # `create_app` would sit *inside* that one, see a `scope["client"]` the
+    # outer copy already rewrote, and double-apply the trust decision. The fix
+    # for "the real client IP is wrong" is `Settings.forwarded_allow_ips`
+    # (`config/settings.py`), not another middleware here.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

@@ -109,6 +109,15 @@ def build_lifespan(settings: Settings) -> Lifespan:
             max_attempts=settings.login_max_attempts,
             window_s=settings.login_window_s,
         )
+        # Built unconditionally, even when `public_kiosk_enabled` is false: an
+        # empty dict and a lock cost nothing, and leaving this `Optional`
+        # would force every future call site (Phase 02's public routes) to
+        # narrow it before use for a saving that does not exist.
+        kiosk_limiter = SlidingWindowLimiter(
+            max_attempts=settings.public_kiosk_max_searches,
+            window_s=settings.public_kiosk_window_s,
+            message="Too many searches from this device. Please wait and try again.",
+        )
 
         state.hub = hub
         state.supervisor = supervisor
@@ -116,6 +125,7 @@ def build_lifespan(settings: Settings) -> Lifespan:
         state.services["inference_pool"] = inference_pool
         state.services["db_pool"] = db_pool
         state.services["login_limiter"] = login_limiter
+        state.services["kiosk_limiter"] = kiosk_limiter
         # Backup and purge are rare, heavy, admin-triggered operations; this
         # keeps two from ever running at once (Security Considerations,
         # phase 13). A plain `threading.Lock` is enough - `app.state.caps` is
@@ -151,7 +161,9 @@ def build_lifespan(settings: Settings) -> Lifespan:
             PeriodicJob(
                 name="rate_limiter_sweep",
                 interval_s=RATE_LIMITER_SWEEP_INTERVAL_S,
-                run=partial(rate_limiter_sweep_job.run, session_factory, login_limiter),
+                run=partial(
+                    rate_limiter_sweep_job.run, session_factory, login_limiter, kiosk_limiter
+                ),
                 initial_delay_s=_STAGGER_STEP_S * 4,
             ),
         ]
@@ -171,6 +183,11 @@ def build_lifespan(settings: Settings) -> Lifespan:
             database_url=_safe_db_url(settings.database_url),
             detector_backend=settings.detector_backend,
             inference_workers=settings.inference_pool_size,
+            public_kiosk_enabled=settings.public_kiosk_enabled,
+            # Printed because a wrong value here fails silently everywhere
+            # else: every client just looks like the proxy, and "why is every
+            # client 127.0.0.1" is the symptom an operator actually sees.
+            forwarded_allow_ips=settings.forwarded_allow_ips,
         )
 
         await supervisor.start()

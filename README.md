@@ -24,9 +24,11 @@ Browser Dashboard (React + Ant Design)
     └─ Admin: camera config, ROI polygons, backups
 ```
 
-**Three user tiers**: resident (read counts only) < security (live view + alerts) < admin (full control).
+**Three user tiers**: resident (authenticated, read counts only) < security (live view + alerts, search by plate) < admin (full control).
 
-**Privacy**: Camera images are processed and discarded locally; residents see counts only (never which slot). No images leave the building.
+**Public surface**: `/kiosk` is unauthenticated (no login). It shows free bay codes and allows partial-match licence-plate search, both behind a rate limit and kill-switch. See [Privacy Position](docs/project-overview-pdr.md#privacy-position) for the trade-off.
+
+**Privacy**: Camera images are processed and discarded locally; no images leave the building. The authenticated dashboard ensures residents never see which slot is occupied. The public kiosk deliberately shows which bay is free and allows plate search.
 
 ## Quick Start
 
@@ -149,10 +151,15 @@ docs/                Architecture, standards, deployment, roadmap, changelog
 
 ## Features
 
-### For Residents
-- **Lobby kiosk**: Real-time free slot counts per floor.
+### For Residents (Authenticated Dashboard)
+- **Real-time counts**: Free slot counts per floor (read-only).
 - **History**: 7-day occupancy trend chart.
 - **Privacy**: Never sees which slot holds which car.
+
+### For Customers (Public Lobby Kiosk — Unauthenticated)
+- **Free bay codes**: List of unoccupied spaces per floor (no login needed).
+- **Plate search**: Find your car by licence plate (partial match, rate-limited, behind a kill-switch).
+- **Audit**: Every search is logged anonymously with client IP for rate limiting.
 
 ### For Security
 - **Live view**: Camera stream with detected boxes overlaid; ROI polygons visible.

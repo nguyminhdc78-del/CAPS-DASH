@@ -21,6 +21,8 @@ from .routes.camera_routes import router as camera_router
 from .routes.camera_slot_map_routes import router as camera_slot_map_router
 from .routes.health_routes import router as health_router
 from .routes.history_routes import router as history_router
+from .routes.plate_routes import router as plate_router
+from .routes.public_kiosk_routes import router as public_kiosk_router
 from .routes.slot_routes import router as slot_router
 from .routes.stats_routes import router as stats_router
 from .routes.summary_routes import router as summary_router
@@ -35,6 +37,10 @@ api_router.include_router(auth_router)
 api_router.include_router(user_router)
 api_router.include_router(summary_router)
 api_router.include_router(slot_router)
+api_router.include_router(plate_router)
+# Its /public/plates/search path cannot collide with /plates/search above -
+# distinct prefixes, registered in either order would behave the same.
+api_router.include_router(public_kiosk_router)
 # Diagnostics first: it owns the literal `/cameras/test-connection`, and a
 # `/cameras/{camera_id}` route registered ahead of it would claim that path
 # and answer 422 instead.

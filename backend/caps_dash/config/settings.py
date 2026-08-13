@@ -7,6 +7,7 @@ password in source, which is exactly what this module exists to prevent.
 
 from __future__ import annotations
 
+import ipaddress
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -18,6 +19,31 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Placeholder values that must never survive into production.
 _UNSAFE_SECRETS = {"", "change-me", "changeme", "secret", "caps"}
+
+
+def _trusts_every_hop(forwarded_allow_ips: str) -> bool:
+    """True if this trust list lets any caller forge `X-Forwarded-For`.
+
+    Checking for the literal `"*"` is not enough: `0.0.0.0/0` and `::/0` are
+    the other standard spellings of "trust every hop", and uvicorn honours
+    them the same way. A prod deployment that used the CIDR form would sail
+    past a string comparison while leaving the client IP fully caller-
+    controlled - which forges both the per-IP search budget and every audit
+    row's `client_ip`, the two protections the public kiosk depends on.
+    """
+    for raw_entry in forwarded_allow_ips.split(","):
+        entry = raw_entry.strip()
+        if entry == "*":
+            return True
+        try:
+            # `strict=False` so a host address with a prefix does not raise.
+            if ipaddress.ip_network(entry, strict=False).prefixlen == 0:
+                return True
+        except ValueError:
+            # Not an address or network (a hostname, or noise). uvicorn will
+            # not treat it as a wildcard, so it is not our concern here.
+            continue
+    return False
 
 # HS256 signs with SHA-256, so a key shorter than the 32-byte digest reduces
 # the effective security of every token. RFC 7518 section 3.2.
@@ -53,6 +79,16 @@ class Settings(BaseSettings):
     refresh_token_ttl_days: int = 7
     login_max_attempts: int = 5
     login_window_s: int = 300
+    # uvicorn's own env var (`FORWARDED_ALLOW_IPS`, read by `Config.load()` to
+    # build `ProxyHeadersMiddleware`), mirrored here so `serve_command.py` can
+    # pass it explicitly and the `.env` launch path works too - one knob, one
+    # name, no divergence between the raw-uvicorn paths (Docker, systemd) and
+    # this one. Must name the reverse proxy's address as uvicorn sees it (the
+    # bridge gateway under Docker, `127.0.0.1` for a local nginx). Setting it
+    # to `"*"` trusts every hop, which makes `X-Forwarded-For` fully
+    # client-controlled - the real client IP becomes whatever the caller
+    # claims, which is worthless for both the rate limiter and the audit log.
+    forwarded_allow_ips: str = "127.0.0.1"
 
     # --- Storage -----------------------------------------------------------
     database_url: str = f"sqlite:///{REPO_ROOT / 'data' / 'caps.db'}"
@@ -189,6 +225,38 @@ class Settings(BaseSettings):
     # before going back to the device.
     snapshot_max_age_s: float = 10.0
 
+    # Read the plate of a car when its bay fills. Off by default, and that is
+    # the honest default rather than a timid one:
+    #
+    # - It costs ~1 s of the shared inference worker per arrival, measured on
+    #   the board, so a site that does not want the feature should not pay for
+    #   it by accident.
+    # - It downloads its models on first use, which a machine with no internet
+    #   must be able to decline.
+    # - It stores a plate number, which identifies a vehicle and through it a
+    #   person. A feature with that consequence should be switched on
+    #   deliberately, by someone who has decided to store it.
+    #
+    # Turning it on is one line; leaving it on by default would mean shipping
+    # personal-data collection to anyone who upgraded without reading.
+    plate_reading_enabled: bool = False
+
+    # --- Public kiosk --------------------------------------------------------
+    # Makes the `/kiosk` lobby display reachable with no login, and adds a
+    # partial-match plate search to it. Off by default because enabling it is
+    # a real trade, not a formality: anyone on the network can locate any
+    # vehicle by typing part of its plate. It also needs
+    # `plate_reading_enabled` on - with that off there are zero `plate_reads`
+    # rows, so the search box has nothing to search and stays hidden rather
+    # than shown returning nothing.
+    public_kiosk_enabled: bool = False
+    # Per-client-IP budget for the public search endpoint. Tunable because a
+    # busy lobby may need it raised without a code change; 10/60s was sized
+    # for an internal-LAN-only deployment where one IP is effectively one
+    # device (see Phase 01 of the public-kiosk plan).
+    public_kiosk_max_searches: int = 10
+    public_kiosk_window_s: int = 60
+
     # --- Reporting ---------------------------------------------------------
     # A range is mandatory on history queries, and capped: the largest table in
     # the system is on flash storage behind a shared CPU, and one accidental
@@ -272,6 +340,17 @@ class Settings(BaseSettings):
             problems.append("CORS_ORIGINS contains '*', which is not allowed in prod")
         if not self.cors_origins:
             problems.append("CORS_ORIGINS is empty; list the dashboard's real origin")
+        if self.public_kiosk_enabled and _trusts_every_hop(self.forwarded_allow_ips):
+            # Trusting every hop makes `X-Forwarded-For` attacker-controlled,
+            # which forges both the public search rate limit and the audit
+            # trail's client IP - the exact two protections the public kiosk
+            # depends on.
+            problems.append(
+                "FORWARDED_ALLOW_IPS is '*' while PUBLIC_KIOSK_ENABLED is true; "
+                "this lets any caller forge their client IP, defeating both the "
+                "kiosk rate limit and the audit trail. Set it to the reverse "
+                "proxy's real address instead."
+            )
         if problems:
             raise ValueError("Refusing to start in prod: " + "; ".join(problems))
         return self

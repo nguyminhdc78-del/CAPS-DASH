@@ -31,5 +31,6 @@
   "RANGE_TOO_WIDE": "Khoảng thời gian quá dài. Hãy chọn khoảng ngắn hơn.",
   "RANGE_INVALID": "Ngày bắt đầu phải trước ngày kết thúc.",
   "NOT_IMPLEMENTED": "Tính năng này chưa khả dụng.",
-  "WS_TOO_MANY_CONNECTIONS": "Quá nhiều người đang xem trực tiếp. Vui lòng thử lại sau."
+  "WS_TOO_MANY_CONNECTIONS": "Quá nhiều người đang xem trực tiếp. Vui lòng thử lại sau.",
+  "PUBLIC_KIOSK_DISABLED": "Màn hình công cộng chưa được bật."
 }

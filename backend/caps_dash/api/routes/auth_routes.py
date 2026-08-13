@@ -16,6 +16,7 @@ from ...db.types import utc_now
 from ...errors.codes import ErrorCode
 from ...errors.exceptions import AuthError, NotFoundError
 from ...repositories import user_repository
+from ...security.client_ip import client_ip as _client_ip
 from ...security.current_user import CurrentUser, get_current_user
 from ...security.refresh_cookie import (
     clear_refresh_cookie,
@@ -34,10 +35,6 @@ from ..schemas.auth_schemas import (
 from ..schemas.common_schemas import OkResponse
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-
-def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else ""
 
 
 def _user_agent(request: Request) -> str:

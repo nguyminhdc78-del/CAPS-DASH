@@ -6,8 +6,10 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { compareSlotCodes } from '@/features/slots/sort-slot-codes'
+import { KioskDisabledNotice } from './kiosk-disabled-notice'
 import { KioskFloorPanel } from './kiosk-floor-panel'
 import { KioskOfflineBanner } from './kiosk-offline-banner'
+import { KioskPlateSearch } from './kiosk-plate-search'
 import { useKioskSummary } from './use-kiosk-summary'
 
 /** Ticks once a second, shared by the clock and the offline banner's "data
@@ -45,26 +47,43 @@ function toggleFullscreen(): void {
 }
 
 /**
- * Lobby display, route `/kiosk`, resident privilege.
+ * Public lobby display, route `/kiosk`. Unauthenticated - no session, no
+ * login redirect, gated server-side by `PUBLIC_KIOSK_ENABLED` instead
+ * (`app-router.tsx`, `use-kiosk-summary.ts`).
  *
- * Renders COUNTS ONLY - no slot code, no camera name, no imagery of any
- * kind. That is not a UI choice made here; it is inherited directly from
- * `OccupancySummary` (`api/schemas/summary_schemas.py`), the one endpoint a
- * resident session can call: the schema itself carries no slot id, camera
- * id or polygon, so there is nothing more specific this page could show
- * even if it wanted to. A public lobby screen showing "space B-17 is empty"
- * instead of "42 free" would tell a passer-by exactly which car is away
- * from home - the privacy tier exists to prevent precisely that.
+ * This page shows a customer their own FREE bay codes and, when the backend
+ * allows it, lets them search their own plate to find which bay it is in.
+ * That is a deliberate, adopted trade, not an oversight: an earlier version
+ * of this file described a resident-only view and cited "a public lobby
+ * screen showing 'space B-17 is empty'" as the exact thing the privacy tier
+ * existed to prevent. That description is no longer true. It is now what
+ * this page does, on purpose, because a customer standing in the lobby
+ * wanting to know where their own car is parked is the actual product.
+ *
+ * The two pieces carry very different risk and are not treated the same:
+ *   - FREE codes (`kiosk-floor-panel.tsx` / `kiosk-free-codes.tsx`) are
+ *     low-risk. An empty bay holds no car; a code here identifies a space,
+ *     not a vehicle.
+ *   - Plate search (`kiosk-plate-search.tsx`) is where the real risk lives.
+ *     Partial match, public, unauthenticated means anyone in the building
+ *     can enumerate the car park and locate a specific vehicle. This was
+ *     accepted knowingly (`plans/.../plan.md`, "What this deliberately
+ *     trades away"), not smuggled in, and it ships with guard rails: a
+ *     per-IP rate limit, an audit row written for every single search
+ *     (never as-you-type - see `use-kiosk-plate-search.ts`), and a
+ *     kill-switch (`PLATE_READING_ENABLED`) that removes the search box
+ *     from the DOM entirely rather than showing it disabled or empty.
  *
  * `position: fixed; inset: 0` covers the app's sider/header regardless of
  * whether the router still wraps this route in `<AppLayout>` - route
- * wiring for `/kiosk` belongs to the orchestrator (see this phase's report),
- * not to this file, so the "no chrome" requirement is met defensively here
- * rather than assumed from the route tree.
+ * wiring for `/kiosk` belongs to `app-router.tsx`, not to this file, so the
+ * "no chrome" requirement is met defensively here rather than assumed from
+ * the route tree.
  */
 export default function KioskPage(): ReactNode {
   const { t, i18n } = useTranslation('kiosk')
-  const { summary, isOffline, lastUpdatedAt } = useKioskSummary()
+  const { summary, freeCodesByFloor, plateSearchEnabled, isOffline, isDisabled, lastUpdatedAt } =
+    useKioskSummary()
   const now = useNowTick(1_000)
   const isFullscreen = useIsFullscreen()
 
@@ -106,15 +125,26 @@ export default function KioskPage(): ReactNode {
         </Flex>
       </Flex>
 
-      {isOffline && <KioskOfflineBanner lastUpdatedAt={lastUpdatedAt} now={now} />}
+      {isDisabled ? <KioskDisabledNotice /> : null}
 
-      {floors.length === 0 ? (
+      {!isDisabled && isOffline && <KioskOfflineBanner lastUpdatedAt={lastUpdatedAt} now={now} />}
+
+      {/* Absent from the DOM when the flag is off - never rendered disabled
+          or empty-stated, see this file's top comment and
+          `kiosk-plate-search.tsx`. */}
+      {!isDisabled && plateSearchEnabled ? (
+        <div style={{ marginTop: 16 }}>
+          <KioskPlateSearch />
+        </div>
+      ) : null}
+
+      {isDisabled ? null : floors.length === 0 ? (
         <Empty description={t('kiosk:noFloorData')} />
       ) : (
         <Flex gap={16} wrap style={{ marginTop: 16 }}>
           {floors.map((floor) => (
             <div key={floor.floor} style={{ flex: '1 1 320px' }}>
-              <KioskFloorPanel floor={floor} />
+              <KioskFloorPanel floor={floor} freeCodes={freeCodesByFloor[floor.floor] ?? []} />
             </div>
           ))}
         </Flex>

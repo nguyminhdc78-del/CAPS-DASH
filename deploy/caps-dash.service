@@ -14,11 +14,24 @@ Group=caps
 EnvironmentFile=/etc/caps-dash/caps-dash.env
 WorkingDirectory=/opt/caps-dash
 
+# `ProtectHome=true` below makes /home and /root empty, and the plate models
+# cache under `Path.home()/.cache` - which would leave the download nowhere to
+# land the first time PLATE_READING_ENABLED is used. Pointing HOME at the state
+# directory keeps the hardening and gives the cache a writable home inside
+# ReadWritePaths. Harmless when the feature is off.
+Environment=HOME=/var/lib/caps-dash
+
 # ONE worker is a correctness requirement, not a tuning choice - see
 # docs/system-architecture.md and backend/caps_dash/app_factory.py's runtime
 # guard. Each worker would start its own camera supervisor: duplicate polls
 # of every ESP32-CAM, duplicate inference, vote filters disagreeing about the
 # same slot, and several processes racing to write one SQLite file.
+#
+# FORWARDED_ALLOW_IPS (set in caps-dash.env, read natively by uvicorn) must
+# list the reverse proxy's address as uvicorn sees it - 127.0.0.1 here, for
+# the local nginx this unit expects. Wrong, and every request looks like it
+# came from the proxy, which breaks the public-kiosk rate limit and audit
+# trail alike. "*" is refused at startup when the public kiosk is on.
 ExecStart=/opt/caps-dash/.venv/bin/uvicorn caps_dash.main:app --host 127.0.0.1 --port 8000 --workers 1
 
 Restart=on-failure

@@ -38,9 +38,9 @@ Module map with originating phase. All Python packages follow `snake_case`; all 
 
 | Directory | Purpose | Phase |
 |-----------|---------|-------|
-| `app/` | Route definitions (one array drives router and sidebar); `layout.tsx` | 09 |
+| `app/` | Route definitions (one array drives router and sidebar); `layout.tsx`. `/kiosk` is deliberately outside `APP_ROUTES` and unauthenticated | 09, 05 |
 | `core/` | Queries (React Query), auth (login/logout/refresh), role ranking | 09 |
-| `features/` | Pages: dashboard, slots, cameras, live view, ROI editor, history, stats, alerts, users, system | 09–13 |
+| `features/` | Pages: dashboard, slots, cameras, live view, ROI editor, history, stats, alerts, users, system, and public kiosk | 09–13, 05 |
 | `shared/` | UI atoms: buttons, forms, tables, locale provider, state-tag component | 09 |
 | `i18n/` | Locale files (VI/EN); bilingual copy rules (VI default) | 09 |
 
@@ -82,7 +82,7 @@ Module map with originating phase. All Python packages follow `snake_case`; all 
 | File | Audience | Phase |
 |------|----------|-------|
 | `README.md` | Users; quickstart, architecture, licence | 14 |
-| `project-overview-pdr.md` | Stakeholders; problem, users, scope, privacy | 14 |
+| `project-overview-pdr.md` | Stakeholders; problem, users, scope, privacy (authenticated dashboard and public kiosk trade-off) | 14, 05 |
 | `system-architecture.md` | Developers; physical flow, concurrency model, framing spec, data model | 14 |
 | `code-standards.md` | Developers; naming, file size, sync vs async, error contracts | 14 |
 | `design-guidelines.md` | Frontend devs; tokens, colors, copy, accessibility | 14 |

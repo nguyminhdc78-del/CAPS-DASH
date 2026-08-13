@@ -142,7 +142,7 @@ further from its slot on every restart.
 
 ## Data Model
 
-8 tables, normalized to avoid denormalization bugs but denormalized selectively for performance.
+9 tables, normalized to avoid denormalization bugs but denormalized selectively for performance.
 
 ```
 ┌──────────────┐         ┌─────────────────┐
@@ -199,6 +199,27 @@ further from its slot on every restart.
 │ details (JSON)
 │ created_at   │
 └──────────────┘
+```
+
+```
+┌──────────────────────┐
+│ plate_reads          │   Written only when PLATE_READING_ENABLED and a bay
+├──────────────────────┤   has just turned OCCUPIED - once per arrival, never
+│ id (PK)              │   per tick. Append-only; a bay's current occupant is
+│ slot_id (FK, IDX)    │   its newest row, which is why the search subqueries
+│ camera_id (FK)       │   max(read_at) per slot BEFORE filtering by plate.
+│ plate                │   Two routes read this table:
+│ confidence           │   - `/api/plates/search` (security-and-above, audited
+│ plate_width_px       │     with username) via PlateSchema (full details).
+│ read_at (IDX)        │   - `/api/public/plates/search` (unauthenticated,
+│                      │     rate-limited, audited anonymously with client IP)
+│                      │     via PublicPlateSchema (4 fields: plate, slot_code,
+│                      │     floor, read_at).
+│                      │   Stored with separators stripped (`30H83231`) so a
+│                      │   query does not depend on punctuation.
+│                      │   Purged on the same RETENTION_MONTHS schedule as
+│                      │   history: it is personal data with an expiry date.
+└──────────────────────┘
 ```
 
 **Indices**: `slot_id` + `inferred_at` on history (range queries); `camera_id` + `is_enabled` on cameras (active camera list); `inferred_at` on history (retention purge).
@@ -423,7 +444,7 @@ Returns 200 only if at least one camera has been contacted in the last 60 second
 | SQLAlchemy | 2.0.51–2.1 |
 | React | 19.x |
 | Ant Design | 6.x |
-| License (runtime) | Apache-2.0 (onnxruntime) |
+| License (runtime) | Apache-2.0 (onnxruntime), MIT (fast-alpr / fast-plate-ocr) |
 | License (dev-only) | AGPL-3.0 (ultralytics) |
 
 No LTS; latest stable at scaffold time, committed lockfile. The board is embedded; updates are infrequent and planned.

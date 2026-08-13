@@ -1,0 +1,18 @@
+{
+  "title": "Tìm xe",
+  "search": "Tìm",
+  "searchPlaceholder": "Biển số, hoặc một phần biển số",
+  "searchAriaLabel": "Tìm theo biển số xe",
+  "searchHint": "Dấu gạch, dấu chấm và khoảng trắng đều được bỏ qua - cứ nhập như nhìn thấy.",
+  "tooShort": "Nhập ít nhất {{min}} ký tự.",
+  "includeVacated": "Kể cả ô xe đã rời đi",
+  "foundAt": "Đang đậu tại",
+  "confidence": "Độ tin cậy {{value}}%",
+  "provenance": "Biển số rộng {{width}} px trong khung hình. Biển càng lớn thì đọc càng chắc.",
+  "shaky": "Nên kiểm tra lại",
+  "shakyHint": "Đọc được với độ tin cậy thấp - nên nhìn xe trước khi báo cho ai.",
+  "vacated": "Ô này đã trống",
+  "vacatedHint": "Đây là nơi xe được nhìn thấy lần cuối. Xe đã rời khỏi ô này.",
+  "noMatches": "Không tìm thấy xe nào với biển \"{{query}}\".",
+  "noMatchesHint": "Biển số chỉ được lưu khi camera đọc được. Xe đậu lùi, đậu chéo hoặc thiếu sáng thường không đọc được biển - nên không tìm thấy không có nghĩa là xe không ở trong tòa nhà."
+}

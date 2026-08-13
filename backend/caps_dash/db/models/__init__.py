@@ -12,6 +12,7 @@ from .audit_log import AuditLog
 from .camera import Camera
 from .hourly_stat import HourlyStat
 from .parking_slot import ParkingSlot
+from .plate_read import PlateRead
 from .refresh_session import RefreshSession
 from .slot_state_history import SlotStateHistory
 from .user import User
@@ -23,6 +24,7 @@ __all__ = [
     "Camera",
     "HourlyStat",
     "ParkingSlot",
+    "PlateRead",
     "RefreshSession",
     "SlotStateHistory",
     "User",

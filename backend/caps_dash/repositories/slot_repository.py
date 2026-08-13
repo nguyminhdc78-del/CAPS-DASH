@@ -1,9 +1,17 @@
 """Parking slot queries.
 
-`select()` statements only. The grouped aggregate backs `/summary`; the
-row-level statement backs `/slots`. Both read `parking_slots.current_state`,
-the column phase 06 denormalises onto the slot row, so neither endpoint ever
-touches `slot_state_history`.
+`select()` statements only. Query boundaries, not row-level filters, enforce
+privacy: the query layer selects exactly the columns an endpoint is allowed to
+return, so a code change cannot accidentally hand `camera_id` or `polygon` to
+an unauthenticated response. Two examples:
+
+1. `count_by_floor_and_state()` backs the authenticated `/api/summary` - counts
+   only, no codes or IDs.
+2. `list_free_codes_by_floor()` backs the public `/api/public/summary` - FREE
+   codes only, no occupied codes, camera IDs or polygons.
+
+Both read `parking_slots.current_state`, the column phase 06 denormalises onto
+the slot row, so neither endpoint ever touches `slot_state_history`.
 """
 
 from __future__ import annotations
@@ -14,6 +22,7 @@ from typing import Any
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
+from ..db.enums import SlotState
 from ..db.models import ParkingSlot
 from ..errors.codes import ErrorCode
 from ..errors.exceptions import NotFoundError
@@ -75,6 +84,25 @@ def count_by_floor_and_state(session: Session) -> list[tuple[str, str, int]]:
         .group_by(ParkingSlot.floor, ParkingSlot.current_state)
     )
     return [(floor, state, count) for floor, state, count in session.execute(query)]
+
+
+def list_free_codes_by_floor(session: Session) -> list[tuple[str, str]]:
+    """FREE bay codes for the public kiosk - one column-level query.
+
+    Selects `(floor, code)` columns, not `ParkingSlot` rows: a row also
+    carries `polygon_json` and `camera_id`, and this result reaches an
+    unauthenticated response. Same idiom as `count_by_floor_and_state`
+    above - the query is the privacy boundary, not a filter applied to
+    loaded rows afterwards. FREE only, so an occupied bay's code can never
+    appear here even if a caller asked for it; restricted to `is_active`,
+    same as the counts.
+    """
+    query = (
+        select(ParkingSlot.floor, ParkingSlot.code)
+        .where(ParkingSlot.current_state == SlotState.FREE, ParkingSlot.is_active.is_(True))
+        .order_by(ParkingSlot.floor, ParkingSlot.code)
+    )
+    return [(floor, code) for floor, code in session.execute(query)]
 
 
 def latest_state_since(session: Session) -> dt.datetime | None:

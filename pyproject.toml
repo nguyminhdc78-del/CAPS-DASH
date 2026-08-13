@@ -33,6 +33,12 @@ dependencies = [
     "numpy>=2.2,<3",
     "onnxruntime>=1.28,<2",
     "opencv-python-headless>=4.10,<5",
+    # Plate detection and OCR. ONNX and MIT, a few megabytes, no PyTorch -
+    # which is why it is here and EasyOCR is not: EasyOCR would drag torch onto
+    # a board with 1.7 GB of RAM to read characters that are plain Latin.
+    # Vietnamese plates carry only A-Z and digits, so no language model is
+    # involved. Measured on the board: 1067 ms per read at the 384 input size.
+    "fast-alpr>=0.4,<0.5",
 ]
 
 [project.optional-dependencies]
@@ -92,7 +98,7 @@ explicit_package_bases = true
 exclude = ["backend/caps_dash/db/migrations/versions/"]
 
 [[tool.mypy.overrides]]
-module = ["cv2.*", "onnxruntime.*", "ultralytics.*"]
+module = ["cv2.*", "onnxruntime.*", "ultralytics.*", "fast_alpr.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

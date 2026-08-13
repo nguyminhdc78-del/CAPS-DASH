@@ -46,6 +46,15 @@ export const KIOSK_POLL_MS = 3_000
 // seconds-relevant, and this one polls from every page at once.
 export const ALERT_BADGE_POLL_MS = 60_000
 
+// A lobby display is shared, so a plate search result must not outlive the
+// person who asked for it - the next customer must not read the previous
+// customer's plate. 30s (the plan default) was raised to 60s in validation:
+// the board is read at 2m by customers who may be older or walking past, and
+// 30s risked clearing a bay code before it had been read. The privacy cost is
+// that a result sits on a shared screen twice as long - accepted, because the
+// result carries no name and the bay code is the thing being read.
+export const KIOSK_SEARCH_CLEAR_MS = 60_000
+
 // Overview page ("Tổng quan"). The camera list backs both the hero picker
 // and the health strip - a few seconds keeps a just-flipped-offline camera
 // visible promptly without hammering the list endpoint the way SUMMARY_POLL_MS

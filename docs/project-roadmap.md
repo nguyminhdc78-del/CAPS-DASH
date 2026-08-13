@@ -73,7 +73,7 @@
 - **Storage**: ONNX weights committed to repo; no runtime fetch.
 - **Workers**: One uvicorn worker (correctness constraint, not a tuning knob).
 - **Inference**: CPU-bound, serialized (inference_pool_size=1).
-- **Privacy**: Camera images never leave the building; residents see counts only.
+- **Privacy**: The authenticated dashboard ensures camera images never leave the building and residents see counts only. The public kiosk adds free bay codes and plate search, a deliberate trade-off documented in the PDR.
 - **Sessions**: Multi-device refresh-token rotation with reuse detection.
 - **Retention**: 6 months (flash-wear on the board).
 
@@ -95,10 +95,19 @@ Capture and inference would split into separate processes if horizontal scale is
 
 **Rationale**: Current single-process design is correct for the board's CPU constraints. Refactor only if 6-camera ceiling proves insufficient.
 
-### Licence-Plate Recognition
-Not in the original scope; requested features from the API contract are incomplete.
+### Licence-Plate Recognition - DELIVERED (optional, off by default)
+Was deferred pending business value. The security team confirmed it: finding a
+car whose owner forgot where they parked. Shipped behind `PLATE_READING_ENABLED`.
 
-**Rationale**: Requires separate YOLO model, adds inference overhead, privacy implications require end-user consent. Defer to a later release if business value is confirmed.
+**What the three original objections turned into**:
+- *Separate YOLO model*: `fast-alpr` (MIT, ONNX, no PyTorch) - detector plus
+  OCR in a few megabytes, not a second training pipeline.
+- *Inference overhead*: measured on the board at ~1067 ms per read (384 input).
+  Paid once per arrival, not per tick, and only for a bay that just filled.
+- *Privacy*: the reason it is off by default, security-and-above only, audited
+  on every search including the ones that find nothing, and purged with history.
+
+**DELIVERED in public kiosk**: A customer-facing plate lookup is now live on the public `/kiosk` endpoint (unauthenticated, partial-match, rate-limited). Residents in the authenticated dashboard still never see which bay holds which car. The staff route (`/api/plates/search`, security-and-above) and public route (`/api/public/plates/search`, rate-limited) share the same plate table but differ in access control and audit logging. The asymmetry—free codes are low-risk, plate search carries vehicle enumeration risk—is maintained in the code and documentation.
 
 ### Smoke & Fire Detection
 Not in the original scope; out of project boundary.
