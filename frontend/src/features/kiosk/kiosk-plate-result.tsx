@@ -35,6 +35,7 @@ export function KioskPlateResult({ match }: { match: PublicPlateMatch }): ReactN
           <EnvironmentOutlined style={{ fontSize: 32 }} />
           <Typography.Title
             level={1}
+            className="kiosk-result__code"
             style={{ margin: 0, fontSize: 'clamp(48px, 5vw, 80px)', fontWeight: 700 }}
           >
             {match.slot_code}

@@ -371,50 +371,263 @@ html[data-theme='dark'] .droom-auth-card {
 }
 
 /* ==========================================================
-   Kiosk — slate canvas, glass floor panels
+   Kiosk — "HUD" dark control-panel look (always dark, self-
+   contained; the kiosk forces its own dark ConfigProvider so
+   it stays a tech display regardless of the admin theme).
+   Neon cyan accent on deep navy, faint scan grid, plate-style
+   search, radar sweep on request, glowing result reveal.
    ========================================================== */
+:root {
+  --hud-cyan: #22d3ee;
+  --hud-cyan-soft: rgba(34, 211, 238, 0.4);
+  --hud-violet: #a78bfa;
+  --hud-green: #22c55e;
+  --hud-red: #f87171;
+  --hud-ink: #e2f2ff;
+  --hud-dim: #7c93b4;
+}
+
 .droom-kiosk {
-  background-color: #f1f5f9 !important;
+  color: var(--hud-ink) !important;
+  background-color: #060b18 !important;
   background-image:
-    radial-gradient(ellipse 800px 520px at 12% 0%, rgba(99, 102, 241, 0.1) 0%, transparent 70%),
-    radial-gradient(ellipse 700px 460px at 88% 100%, rgba(139, 92, 246, 0.08) 0%, transparent 70%) !important;
+    radial-gradient(ellipse 900px 560px at 50% -10%, rgba(34, 211, 238, 0.16) 0%, transparent 62%),
+    radial-gradient(ellipse 760px 520px at 100% 108%, rgba(139, 92, 246, 0.14) 0%, transparent 62%),
+    linear-gradient(180deg, #060b18 0%, #060912 100%) !important;
 }
-html[data-theme='dark'] .droom-kiosk {
-  background-color: #0b1120 !important;
+
+/* Faint HUD scan-grid over the whole surface. */
+.droom-kiosk::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
   background-image:
-    radial-gradient(ellipse 800px 520px at 12% 0%, rgba(99, 102, 241, 0.18) 0%, transparent 70%),
-    radial-gradient(ellipse 700px 460px at 88% 100%, rgba(139, 92, 246, 0.12) 0%, transparent 70%) !important;
+    linear-gradient(rgba(34, 211, 238, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.05) 1px, transparent 1px);
+  background-size: 46px 46px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 40%, transparent 100%);
 }
-.droom-kiosk .ant-card {
-  border-radius: 20px;
-  border: 1px solid var(--droom-card-border-light);
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(16px) saturate(170%);
-  -webkit-backdrop-filter: blur(16px) saturate(170%);
-  box-shadow: 0 10px 40px rgba(99, 102, 241, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-html[data-theme='dark'] .droom-kiosk .ant-card {
-  background: rgba(30, 41, 59, 0.78);
-  border-color: var(--droom-card-border-dark);
-}
+
+/* ---- Top bar ---- */
 .droom-kiosk-title {
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: linear-gradient(135deg, #67e8f9, #a78bfa);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-}
-html[data-theme='dark'] .droom-kiosk-title {
-  background: linear-gradient(135deg, #a5b4fc, #c4b5fd);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 30px rgba(34, 211, 238, 0.25);
 }
 .droom-clock {
+  color: var(--hud-cyan) !important;
   font-variant-numeric: tabular-nums;
+  font-weight: 700;
   padding: 6px 16px;
+  border-radius: 12px;
+  background: rgba(34, 211, 238, 0.08);
+  border: 1px solid var(--hud-cyan-soft);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.12), inset 0 0 12px rgba(34, 211, 238, 0.06);
+}
+
+/* ---- Hero (find-your-car is the one job here) ---- */
+.kiosk-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  flex: 1;
+  text-align: center;
+  padding: 16px 0 8px;
+}
+.kiosk-hero__eyebrow {
+  color: var(--hud-cyan);
+  font-size: clamp(13px, 1.2vw, 16px);
+  font-weight: 600;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.kiosk-hero__title {
+  margin: 0;
+  font-weight: 800;
+  line-height: 1.05;
+  font-size: clamp(30px, 5vw, 64px);
+  color: #f4faff;
+  text-shadow: 0 0 40px rgba(34, 211, 238, 0.25);
+}
+.kiosk-hero__hint {
+  color: var(--hud-dim);
+  font-size: clamp(13px, 1.2vw, 17px);
+}
+
+/* ---- HUD plate search field ---- */
+.kiosk-hud {
+  width: min(680px, 92vw);
+}
+.kiosk-hud .ant-input-affix-wrapper,
+.kiosk-hud .ant-input-outlined {
+  background: rgba(3, 8, 20, 0.72) !important;
+  border: 1.5px solid var(--hud-cyan-soft) !important;
+  border-radius: 16px !important;
+  box-shadow: inset 0 0 24px rgba(34, 211, 238, 0.08), 0 0 28px rgba(34, 211, 238, 0.1) !important;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.kiosk-hud .ant-input {
+  background: transparent !important;
+  color: #eafcff !important;
+  font-weight: 700;
+  letter-spacing: clamp(2px, 0.5vw, 6px);
+  font-size: clamp(20px, 2.4vw, 34px) !important;
+  caret-color: var(--hud-cyan);
+  text-transform: uppercase;
+}
+.kiosk-hud .ant-input::placeholder {
+  color: rgba(124, 147, 180, 0.7) !important;
+  letter-spacing: 1px;
+  font-weight: 500;
+  text-transform: none;
+}
+.kiosk-hud .ant-input-affix-wrapper:focus-within,
+.kiosk-hud .ant-input-affix-wrapper-focused {
+  border-color: var(--hud-cyan) !important;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.22), 0 0 40px rgba(34, 211, 238, 0.28) !important;
+}
+/* Search button as a glowing action key. */
+.kiosk-hud .ant-input-search-button,
+.kiosk-hud .ant-btn-primary {
+  height: auto;
+  border: none !important;
+  background: linear-gradient(135deg, #22d3ee, #6366f1) !important;
+  box-shadow: 0 0 24px rgba(34, 211, 238, 0.35) !important;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* Radar sweep while the real request is in flight (no fake delay). */
+.kiosk-hud {
+  position: relative;
+}
+.kiosk-hud.is-scanning::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, rgba(34, 211, 238, 0.18) 45%, rgba(103, 232, 249, 0.35) 50%, rgba(34, 211, 238, 0.18) 55%, transparent 100%);
+  background-size: 220% 100%;
+  animation: hudSweep 1.1s linear infinite;
+  mix-blend-mode: screen;
+}
+@keyframes hudSweep {
+  0% { background-position: 120% 0; }
+  100% { background-position: -120% 0; }
+}
+
+/* ---- Result reveal ---- */
+.kiosk-result .ant-card {
+  border: 1px solid var(--hud-cyan-soft);
+  border-radius: 18px;
+  background: rgba(6, 16, 32, 0.78) !important;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  box-shadow: 0 0 44px rgba(34, 211, 238, 0.18), inset 0 1px 0 rgba(34, 211, 238, 0.12);
+  animation: hudReveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.kiosk-result .ant-card-body :where(h1, .ant-typography) {
+  color: #eafcff;
+}
+.kiosk-result .kiosk-result__code {
+  color: #eafcff !important;
+  text-shadow: 0 0 34px rgba(34, 211, 238, 0.5), 0 0 8px rgba(34, 211, 238, 0.4);
+}
+@keyframes hudReveal {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ---- Compact availability strip (demoted below the hero) ---- */
+.kiosk-avail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  width: 100%;
+}
+.kiosk-avail__floor {
+  min-width: 132px;
+  padding: 12px 18px;
   border-radius: 14px;
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(9, 18, 36, 0.7);
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  text-align: center;
+}
+.kiosk-avail__name {
+  color: var(--hud-dim);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.kiosk-avail__free {
+  font-weight: 800;
+  line-height: 1;
+  font-size: clamp(28px, 3vw, 44px);
+  color: var(--hud-green);
+  text-shadow: 0 0 22px rgba(34, 197, 94, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+.kiosk-avail__free.is-full {
+  color: var(--hud-red);
+  text-shadow: 0 0 22px rgba(248, 113, 113, 0.4);
+}
+.kiosk-avail__meta {
+  color: var(--hud-dim);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.kiosk-avail__codes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.kiosk-avail__code {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 7px;
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Availability-only mode (plate search killed) keeps the big
+        readable board, just re-skinned dark. ---- */
+.droom-kiosk .ant-card {
+  border-radius: 20px;
+  border: 1px solid rgba(34, 211, 238, 0.16);
+  background: rgba(9, 18, 36, 0.72);
+  backdrop-filter: blur(16px) saturate(170%);
+  -webkit-backdrop-filter: blur(16px) saturate(170%);
+  box-shadow: 0 10px 40px rgba(3, 8, 20, 0.5), inset 0 1px 0 rgba(34, 211, 238, 0.08);
+}
+
+/* Portrait phones: everything stacks; the hero stays the focus. */
+@media (max-width: 640px) {
+  .kiosk-hero { padding-top: 8px; }
+  .kiosk-avail__floor { min-width: 44%; flex: 1 1 44%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kiosk-hud.is-scanning::after { animation: none; opacity: 0.6; }
+  .kiosk-result .ant-card { animation: none; }
 }
 
 /* ==========================================================

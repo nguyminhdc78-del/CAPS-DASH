@@ -1,4 +1,4 @@
-import { Alert, ConfigProvider, Flex, Input, Typography } from 'antd'
+import { Alert, Flex, Input, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -15,25 +15,24 @@ import { MIN_PLATE_QUERY_LENGTH, useKioskPlateSearch } from './use-kiosk-plate-s
 const RATE_LIMIT_FALLBACK_S = 60
 
 /**
- * The public plate search box.
+ * The public plate search box - the kiosk's HUD hero (styled by `.kiosk-hud`
+ * in droom.css: a plate-shaped, neon-edged field with a radar sweep while the
+ * request is genuinely in flight - no fake delay, `isFetching` drives it).
  *
  * Rendered by `kiosk-page.tsx` only when the backend's `plate_search_enabled`
  * is true - never mounted disabled or empty-stated for a flag that is off,
  * because a box that can only ever return nothing is worse than no box.
  *
  * Submit-only, never as-you-type (`onSearch`, not `onChange`): every request
- * to `/public/plates/search` is written to the anonymous audit log, so
- * firing one per keystroke would turn "who searched for what" into noise -
- * see `use-kiosk-plate-search.ts`.
+ * to `/public/plates/search` is written to the anonymous audit log, so firing
+ * one per keystroke would turn "who searched for what" into noise - see
+ * `use-kiosk-plate-search.ts`.
  *
- * A lobby display is shared hardware: whatever the last customer searched
- * would otherwise sit on screen for the next one. The submitted query, the
- * rendered result AND the still-visible typed text all clear themselves
- * automatically `KIOSK_SEARCH_CLEAR_MS` after a search - clearing only the
- * result and leaving the plate sitting in the input box would still hand it
- * to the next person, which is exactly what the auto-clear exists to
- * prevent. Resets on every new search, and the timer is cancelled on
- * unmount so no stray timeout outlives the component.
+ * A lobby display is shared hardware: the submitted query, the rendered result
+ * AND the still-visible typed text all clear themselves `KIOSK_SEARCH_CLEAR_MS`
+ * after a search - clearing only the result and leaving the plate in the box
+ * would still hand it to the next person. Resets on every new search; the
+ * timer is cancelled on unmount so no stray timeout outlives the component.
  */
 export function KioskPlateSearch(): ReactNode {
   const { t } = useTranslation('kiosk')
@@ -42,7 +41,7 @@ export function KioskPlateSearch(): ReactNode {
   const [typed, setTyped] = useState('')
   const [submitted, setSubmitted] = useState('')
 
-  const { data, error } = useKioskPlateSearch(submitted)
+  const { data, error, isFetching } = useKioskPlateSearch(submitted)
 
   useEffect(() => {
     if (submitted.trim().length < MIN_PLATE_QUERY_LENGTH) return undefined
@@ -68,60 +67,58 @@ export function KioskPlateSearch(): ReactNode {
     rateLimited && error instanceof ApiError && typeof error.details.retry_after_s === 'number'
       ? error.details.retry_after_s
       : RATE_LIMIT_FALLBACK_S
+  const scanning = searched && isFetching
 
   return (
-    <Flex vertical gap={12} style={{ width: '100%', maxWidth: 480 }}>
-      <Typography.Text style={{ fontSize: 18 }}>{t('kiosk:searchTitle')}</Typography.Text>
-      {/* Scoped to this box only, not a global theme change: `controlHeightLG`
-          normally renders "large" controls at 40px, under the kiosk's own
-          48px touch-target rule (`design-guidelines.md:117-118`). This is
-          the one screen in the product actually operated by a finger at
-          arm's length, so the override lives here rather than in
-          `use-theme-config.ts`, which every other "large" control in the
-          admin app also reads from. */}
-      <ConfigProvider theme={{ token: { controlHeightLG: 48 } }}>
-        <Input.Search
-          size="large"
-          allowClear
-          enterButton={t('kiosk:searchButton')}
-          aria-label={t('kiosk:searchAriaLabel')}
-          placeholder={t('kiosk:searchPlaceholder')}
-          value={typed}
-          onChange={(event) => setTyped(event.target.value)}
-          onSearch={(value) => setSubmitted(value)}
-        />
-      </ConfigProvider>
+    <div className={`kiosk-hud${scanning ? ' is-scanning' : ''}`}>
+      <Input.Search
+        size="large"
+        allowClear
+        loading={scanning}
+        enterButton={t('kiosk:searchButton')}
+        aria-label={t('kiosk:searchAriaLabel')}
+        placeholder={t('kiosk:searchPlaceholder')}
+        value={typed}
+        onChange={(event) => setTyped(event.target.value)}
+        onSearch={(value) => setSubmitted(value)}
+      />
 
-      {tooShort && (
-        <Typography.Text type="secondary" style={{ fontSize: 18 }}>
-          {t('kiosk:tooShort', { min: MIN_PLATE_QUERY_LENGTH })}
-        </Typography.Text>
-      )}
-
-      {rateLimited && (
-        // A lobby screen has no `App.useApp()` message host worth relying on,
-        // and a toast is unreadable at 2m - render inline instead.
-        <Alert type="warning" showIcon message={t('kiosk:rateLimited', { seconds: retryAfterSeconds })} />
-      )}
-
-      {otherError && (
-        <Alert type="error" showIcon message={toMessage(error)} />
-      )}
-
-      {!rateLimited && !otherError && searched && matches.length === 0 && (
-        <Flex vertical gap={4}>
-          <Typography.Text style={{ fontSize: 18 }}>
-            {t('kiosk:noMatches', { query: data?.query ?? submitted })}
-          </Typography.Text>
+      <Flex
+        className="kiosk-result"
+        vertical
+        gap={12}
+        align="center"
+        style={{ marginTop: 16 }}
+      >
+        {tooShort && (
           <Typography.Text type="secondary" style={{ fontSize: 18 }}>
-            {t('kiosk:noMatchesHint')}
+            {t('kiosk:tooShort', { min: MIN_PLATE_QUERY_LENGTH })}
           </Typography.Text>
-        </Flex>
-      )}
+        )}
 
-      {matches.map((match) => (
-        <KioskPlateResult key={`${match.slot_code}-${match.read_at}`} match={match} />
-      ))}
-    </Flex>
+        {rateLimited && (
+          // A lobby screen has no `App.useApp()` message host worth relying on,
+          // and a toast is unreadable at 2m - render inline instead.
+          <Alert type="warning" showIcon message={t('kiosk:rateLimited', { seconds: retryAfterSeconds })} />
+        )}
+
+        {otherError && <Alert type="error" showIcon message={toMessage(error)} />}
+
+        {!rateLimited && !otherError && searched && !isFetching && matches.length === 0 && (
+          <Flex vertical gap={4} align="center">
+            <Typography.Text style={{ fontSize: 18 }}>
+              {t('kiosk:noMatches', { query: data?.query ?? submitted })}
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 18 }}>
+              {t('kiosk:noMatchesHint')}
+            </Typography.Text>
+          </Flex>
+        )}
+
+        {matches.map((match) => (
+          <KioskPlateResult key={`${match.slot_code}-${match.read_at}`} match={match} />
+        ))}
+      </Flex>
+    </div>
   )
 }
