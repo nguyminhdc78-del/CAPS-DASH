@@ -4,6 +4,10 @@ No AI here. The detector only says "there is a vehicle at these coordinates";
 turning that into "slot A2 is occupied" is plain geometry, and keeping it
 separate is what lets the team change models, or install in a new building,
 without retraining anything.
+
+Strictly ONE box against the slot map. Reducing a whole frame's detections to
+a verdict per bay - dropping what falls outside every slot, and collapsing
+repeat boxes of one car - is `slot_detections`.
 """
 
 from __future__ import annotations
@@ -11,7 +15,7 @@ from __future__ import annotations
 from .constants import MIN_BAND_COVERAGE
 from .detection import Detection
 from .geometry import Point, bottom_band_points, ground_point, point_in_polygon
-from .slot_map import Bounds, Slot, SlotMap
+from .slot_map import Bounds, Slot
 
 
 def assign_detection(detection: Detection, slots: list[Slot]) -> Slot | None:
@@ -65,33 +69,3 @@ def _within(point: Point, bounds: Bounds) -> bool:
 def _overlaps(a: Bounds, b: Bounds) -> bool:
     """Axis-aligned rectangle intersection test."""
     return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
-
-
-def occupied_slot_ids(detections: list[Detection], slot_map: SlotMap) -> set[str]:
-    """Slots holding a vehicle in THIS frame.
-
-    Raw, unfiltered output. Used directly it flickers - feed it through
-    SlotMapFilter before anyone sees it.
-    """
-    return {
-        slot.id
-        for detection in detections
-        if (slot := assign_detection(detection, slot_map.slots)) is not None
-    }
-
-
-def count_detections_per_slot(
-    detections: list[Detection], slot_map: SlotMap
-) -> dict[str, int]:
-    """How many vehicles landed in each slot.
-
-    Two or more in one slot means the polygon was drawn across the row behind
-    it. That is a mistake worth catching while the installer is still on the
-    ladder, so it drives an alert rather than being silently averaged away.
-    """
-    counts = {slot.id: 0 for slot in slot_map.slots}
-    for detection in detections:
-        slot = assign_detection(detection, slot_map.slots)
-        if slot is not None:
-            counts[slot.id] += 1
-    return counts

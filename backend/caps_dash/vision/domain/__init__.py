@@ -11,7 +11,7 @@ the usual scientific-Python stack.
 
 from __future__ import annotations
 
-from .assignment import assign_detection, count_detections_per_slot, occupied_slot_ids
+from .assignment import assign_detection
 from .constants import (
     BAND_COLS,
     BAND_FRACTION,
@@ -19,6 +19,7 @@ from .constants import (
     DEFAULT_VOTE_THRESHOLD,
     DEFAULT_VOTE_WINDOW,
     MIN_BAND_COVERAGE,
+    SAME_VEHICLE_IOU,
 )
 from .detection import Detection
 from .geometry import (
@@ -29,6 +30,12 @@ from .geometry import (
     point_in_polygon,
     polygon_area,
     scale_polygon,
+)
+from .slot_detections import (
+    count_detections_per_slot,
+    group_detections_by_slot,
+    occupied_slot_ids,
+    resolve_slot_detections,
 )
 from .slot_map import Slot, SlotMap
 from .states import SlotState
@@ -41,6 +48,7 @@ __all__ = [
     "DEFAULT_VOTE_THRESHOLD",
     "DEFAULT_VOTE_WINDOW",
     "MIN_BAND_COVERAGE",
+    "SAME_VEHICLE_IOU",
     "Detection",
     "Point",
     "Polygon",
@@ -54,8 +62,10 @@ __all__ = [
     "build_filter",
     "count_detections_per_slot",
     "ground_point",
+    "group_detections_by_slot",
     "occupied_slot_ids",
     "point_in_polygon",
     "polygon_area",
+    "resolve_slot_detections",
     "scale_polygon",
 ]

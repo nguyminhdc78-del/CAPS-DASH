@@ -10,11 +10,13 @@ is what makes it worth its own module rather than a branch in the loop.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 
 from ..observability.logging_setup import get_logger
 from ..services.slot_state_service import persist_state_changes
-from ..vision.domain import SlotState, count_detections_per_slot, occupied_slot_ids
+from ..vision.domain import SlotState, count_detections_per_slot, resolve_slot_detections
 from .camera_context import CameraContext
 from .inference_runner import InferenceOutcome
 from .plate_capture import read_plates_for_filled_slots
@@ -29,9 +31,25 @@ async def apply_outcome(
     log = logger.bind(camera_id=context.camera_id, camera_code=context.config.code)
 
     fitted = context.slot_map.fit_to_frame(outcome.frame_w, outcome.frame_h)
-    occupied_now = occupied_slot_ids(outcome.detections, fitted)
+
+    # One vehicle per slot, nothing outside a slot. Everything below - state,
+    # the live overlay, the plate reader - works from this rather than from the
+    # detector's raw output. The raw list is kept only for the install-time
+    # check further down, which is the one question that needs to know what was
+    # thrown away.
+    resolved = resolve_slot_detections(outcome.detections, fitted)
+    occupied_now = set(resolved)
     states = context.vote_filter.update(occupied_now)
-    context.remember_result(outcome, states, fitted)
+
+    # Viewers see the resolved boxes, not the raw ones. A detector run near its
+    # confidence floor - which is where a stock COCO model has to sit to see a
+    # car at all under this camera - paints the picture with boxes over
+    # whatever else is in shot, and the operator cannot tell those from the
+    # cars. Publishing what was actually reasoned about is both quieter and
+    # more honest: the overlay now matches the state beside it.
+    context.remember_result(
+        replace(outcome, detections=list(resolved.values())), states, fitted
+    )
 
     # Does what the detector just saw agree with what the filter is reporting?
     # A disagreement means a slot is mid-transition - the car has gone but the

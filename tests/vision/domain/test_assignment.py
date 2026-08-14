@@ -8,7 +8,9 @@ from caps_dash.vision.domain import (
     SlotMap,
     assign_detection,
     count_detections_per_slot,
+    group_detections_by_slot,
     occupied_slot_ids,
+    resolve_slot_detections,
 )
 
 
@@ -16,8 +18,15 @@ def _rect(slot_id: str, x1: float, y1: float, x2: float, y2: float) -> Slot:
     return Slot(slot_id, [(x1, y1), (x2, y1), (x2, y2), (x1, y2)])
 
 
-def _car(x1: float, y1: float, x2: float, y2: float) -> Detection:
-    return Detection(x1=x1, y1=y1, x2=x2, y2=y2, confidence=0.8, label="car")
+def _car(
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    confidence: float = 0.8,
+    label: str = "car",
+) -> Detection:
+    return Detection(x1=x1, y1=y1, x2=x2, y2=y2, confidence=confidence, label=label)
 
 
 def test_ground_point_inside_a_slot_wins_immediately() -> None:
@@ -97,3 +106,92 @@ def test_count_reports_zero_for_empty_slots() -> None:
     )
     counts = count_detections_per_slot([_car(40, 10, 60, 90)], slot_map)
     assert counts == {"A1": 1, "A2": 0}
+
+
+def test_one_car_returned_as_two_classes_counts_once() -> None:
+    """A stock COCO model calls the same car both car and truck.
+
+    Per-class NMS inside the detector cannot merge those, so without the
+    overlap test this reported two vehicles in a bay holding one and the
+    install-time warning fired continuously.
+    """
+    slot_map = SlotMap(slots=[_rect("A1", 0, 0, 100, 100)], width=100, height=100)
+    car = _car(30, 10, 70, 90, confidence=0.08)
+    same_car_as_truck = _car(31, 12, 69, 91, confidence=0.01, label="truck")
+
+    assert count_detections_per_slot([car, same_car_as_truck], slot_map) == {"A1": 1}
+
+
+# --- ROI gating and one-vehicle-per-slot ------------------------------------
+
+
+def test_detections_outside_every_slot_are_dropped() -> None:
+    """The ROI is the filter: a mouse on the desk is not evidence about a bay."""
+    slot_map = SlotMap(slots=[_rect("A1", 0, 0, 100, 100)], width=400, height=400)
+    parked = _car(40, 10, 60, 90)
+    not_a_car = _car(300, 300, 360, 380)
+
+    assert group_detections_by_slot([parked, not_a_car], slot_map) == {"A1": [parked]}
+    assert resolve_slot_detections([parked, not_a_car], slot_map) == {"A1": parked}
+
+
+def test_a_slot_resolves_to_exactly_one_vehicle() -> None:
+    """Three boxes on one car collapse to the best-scoring box."""
+    slot_map = SlotMap(slots=[_rect("A1", 0, 0, 100, 100)], width=100, height=100)
+    weak = _car(30, 10, 70, 90, confidence=0.01)
+    best = _car(31, 11, 71, 91, confidence=0.08)
+    middling = _car(29, 9, 69, 89, confidence=0.04, label="truck")
+
+    resolved = resolve_slot_detections([weak, best, middling], slot_map)
+
+    assert resolved == {"A1": best}
+
+
+def test_equal_confidence_resolves_to_the_larger_box() -> None:
+    """Deterministic tie-break, so the overlay does not jitter between frames."""
+    slot_map = SlotMap(slots=[_rect("A1", 0, 0, 100, 100)], width=100, height=100)
+    small = _car(40, 40, 60, 90, confidence=0.05)
+    large = _car(20, 10, 80, 95, confidence=0.05)
+
+    assert resolve_slot_detections([small, large], slot_map) == {"A1": large}
+    assert resolve_slot_detections([large, small], slot_map) == {"A1": large}
+
+
+def test_resolution_keeps_one_vehicle_in_each_of_several_slots() -> None:
+    slot_map = SlotMap(
+        slots=[_rect("A1", 0, 0, 100, 100), _rect("A2", 100, 0, 200, 100)],
+        width=200,
+        height=100,
+    )
+    a1 = _car(40, 10, 60, 90, confidence=0.3)
+    a1_duplicate = _car(41, 11, 61, 91, confidence=0.1)
+    a2 = _car(140, 10, 160, 90, confidence=0.2)
+
+    resolved = resolve_slot_detections([a1, a1_duplicate, a2], slot_map)
+
+    assert resolved == {"A1": a1, "A2": a2}
+
+
+def test_resolution_never_changes_which_slots_are_occupied() -> None:
+    """Collapsing to one box per slot must not lose an occupied slot."""
+    slot_map = SlotMap(
+        slots=[_rect("A1", 0, 0, 100, 100), _rect("A2", 100, 0, 200, 100)],
+        width=200,
+        height=100,
+    )
+    detections = [
+        _car(40, 10, 60, 90),
+        _car(41, 11, 61, 91),
+        _car(140, 10, 160, 90),
+        _car(500, 500, 560, 580),
+    ]
+
+    assert set(resolve_slot_detections(detections, slot_map)) == occupied_slot_ids(
+        detections, slot_map
+    )
+
+
+def test_empty_detections_resolve_to_nothing() -> None:
+    slot_map = SlotMap(slots=[_rect("A1", 0, 0, 100, 100)], width=100, height=100)
+    assert resolve_slot_detections([], slot_map) == {}
+    assert group_detections_by_slot([], slot_map) == {}
