@@ -113,9 +113,8 @@ filterwarnings = ["error::DeprecationWarning:caps_dash.*"]
 # silently doing nothing, so every marker used anywhere in `tests/` must be
 # declared here. Only `e2e` and `worker` are asserted on directly (slow /
 # subprocess-driven tests a developer may want to skip locally with
-# `-m "not e2e"`); `unit` and `integration` exist so the split named in
-# CLAUDE.md's plan is selectable even though most of the suite predates this
-# phase and is not yet retro-tagged with them.
+# `-m "not e2e"`); `unit` and `integration` exist so that split is selectable
+# even though most of the suite predates them and is not yet retro-tagged.
 markers = [
     "unit: fast, no I/O, no database, no event loop",
     "integration: exercises the real app/API against a temp database",
