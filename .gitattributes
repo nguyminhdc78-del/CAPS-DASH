@@ -1,0 +1,21 @@
+# Line endings for the files where they are load-bearing.
+#
+# Deliberately NOT a repo-wide `* text=auto`: most of this tree was written on
+# Windows and renormalising all of it would produce a diff touching every file
+# while fixing nothing. Only the files below actually break when their endings
+# are wrong.
+
+# The OpenAPI contract snapshot is regenerated and byte-compared in CI (see
+# .github/workflows/ci.yml). Generated on Windows it carried CRLF, so the Linux
+# runner rewrote all 8446 lines with LF and failed the gate on a file whose
+# content had not changed. `scripts/dump_openapi_snapshot.py` writes LF for the
+# same reason; this is the half that survives a checkout.
+docs/openapi.json text eol=lf
+
+# These run on Linux - the board and the container. A shell script that reaches
+# the box with CRLF fails as `bad interpreter: /bin/bash^M`, which reads like a
+# missing shell rather than a line-ending problem. They are all LF today; this
+# keeps an edit from a Windows editor from silently changing that.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.service text eol=lf
