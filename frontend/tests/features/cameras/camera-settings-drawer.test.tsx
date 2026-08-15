@@ -190,4 +190,52 @@ describe('CameraSettingsDrawer', () => {
     expect(screen.queryByText(/is not valid for this source type/)).not.toBeInTheDocument()
     expect(screen.queryByRole('switch', { name: 'Lock exposure' })).not.toBeInTheDocument()
   })
+
+  /**
+   * Regression. The ring test was first written inside the sensor panel, so a
+   * camera whose `/settings` call failed - which is every device without a
+   * controllable sensor, and every one that is simply not answering - rendered
+   * an error and nothing else. That hides the control at exactly the moment it
+   * earns its keep: an installer at a half-working node working out which part
+   * is wrong. The ring is a separate device on a separate endpoint and must
+   * not share the sensor's fate.
+   */
+  it('offers the LED ring test even when the sensor cannot be read', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(502, {
+        error: {
+          code: 'CAMERA_UNREACHABLE',
+          message: 'Camera did not report its settings',
+          request_id: 'req-2',
+          details: {},
+        },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDrawer('admin')
+
+    expect(await screen.findByRole('button', { name: 'Occupied (red)' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Free (green)' })).toBeEnabled()
+  })
+
+  it('sends the pattern the pressed swatch stands for', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { camera_id: 7, settings: REPORTED_SETTINGS, applied: null }))
+      .mockResolvedValue(jsonResponse(200, { camera_id: 7, slots: '1', reverts_within_s: 15 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDrawer('admin')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Occupied (red)' }))
+
+    await waitFor(() => {
+      const posted = fetchMock.mock.calls.find(
+        (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+      ) as [string, RequestInit] | undefined
+      expect(posted?.[0]).toBe('/api/cameras/7/ring-test')
+      expect(JSON.parse(String(posted?.[1].body))).toEqual({ slots: '1' })
+    })
+  })
 })

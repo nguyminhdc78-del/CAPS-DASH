@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import cv2
+import httpx
 import numpy as np
 import pytest
 from sqlalchemy import select
@@ -26,6 +27,7 @@ from caps_dash.db.session import create_session_factory, session_scope
 from caps_dash.db.types import utc_now
 from caps_dash.realtime.broadcast_hub import BroadcastHub
 from caps_dash.realtime.frame_protocol import decode_frame_message
+from caps_dash.services import slot_led_service
 from caps_dash.vision.detectors import fake_detector
 from caps_dash.vision.domain import Detection, SlotState
 from caps_dash.vision.sources.base import Frame
@@ -114,7 +116,7 @@ def scripted_detector(monkeypatch: pytest.MonkeyPatch):
 
 async def _run(
     settings, session_factory, camera_id, hub, ticks: int, source=None,
-    poll_interval_s: float | None = None,
+    poll_interval_s: float | None = None, device_url: str | None = None,
 ) -> CameraContext:
     """Drive one camera loop for a bounded number of ticks.
 
@@ -143,6 +145,12 @@ async def _run(
             context.source = source
         if poll_interval_s is not None:
             context.config.poll_interval_s = poll_interval_s
+        if device_url is not None:
+            # Retype the config only, after the source is built: the loop keeps
+            # reading fake frames while everything that addresses the *device*
+            # - the LED ring - believes it is talking to an ESP32.
+            context.config.source_type = "esp32cam_http"
+            context.config.source_url = device_url
         stop = asyncio.Event()
 
         async def rebuild(old: CameraContext) -> CameraContext:
@@ -388,6 +396,66 @@ async def test_a_barely_changing_scene_skips_most_inferences(
     # The point of the gate, stated as a rule rather than a number: most ticks
     # still cost 2.7 ms of comparison instead of a detection.
     assert calls < 8
+
+
+async def test_the_ring_is_refreshed_on_ticks_where_no_detection_runs(
+    settings, session_factory, camera_id, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Found on the real board, not here: the ring sat on "no server" amber
+    over bays whose state was perfectly well known.
+
+    The push used to live in `apply_outcome`, so it only happened when a
+    detection did. On a quiet car park the change gate stops letting
+    detections through - that is its entire job - and the pushes stopped with
+    them. The firmware gives up after 90 s without one; measured on the board,
+    the gap reached 321 s. The lamp was therefore least trustworthy exactly
+    when the car park was calmest.
+
+    The fix is that the tick drives the ring, not the detector. This pins the
+    property that broke: pushes must outnumber detections on a gated scene.
+    """
+    pushes: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        pushes.append(request.url.params["slots"])
+        return httpx.Response(200, json={"ok": True})
+
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        slot_led_service.httpx,
+        "AsyncClient",
+        lambda *a, **kw: original_client(*a, **{**kw, "transport": transport}),
+    )
+    # Every tick's push reaches the wire, so the count is the tick count rather
+    # than a function of the throttle - which is a different rule, pinned in
+    # `tests/services/test_slot_led_ring_push.py`.
+    monkeypatch.setattr(slot_led_service, "REFRESH_S", 0.0)
+
+    gated = settings.model_copy(
+        update={"motion_change_threshold": 3.0, "motion_force_interval_s": 3600.0}
+    )
+    detections = 0
+    real_inference = inference_scheduler.run_inference
+
+    def counting_inference(*args: object, **kwargs: object) -> object:
+        nonlocal detections
+        detections += 1
+        return real_inference(*args, **kwargs)
+
+    inference_scheduler.run_inference = counting_inference
+    try:
+        await _run(
+            gated, session_factory, camera_id, BroadcastHub(),
+            ticks=8, device_url="http://192.0.2.10/anh",
+        )
+    finally:
+        inference_scheduler.run_inference = real_inference
+
+    assert pushes, "the ring was never told anything"
+    # The rule, not a number: the lamp must not fall silent just because the
+    # scene went quiet. Before the fix these two were equal by construction.
+    assert len(pushes) > detections
 
 
 async def test_the_heartbeat_forces_inference_on_a_static_scene(

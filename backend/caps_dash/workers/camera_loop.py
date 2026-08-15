@@ -115,6 +115,22 @@ async def run_camera_loop(
 
             _maybe_infer(context, frame.image, scheduler, log)
 
+            # Driven from the tick, NOT from `apply_outcome`, and that is the
+            # whole point. A detection only happens when the change gate lets
+            # one through, so on a quiet car park - nothing moving, votes long
+            # settled - inference stops, and with it went every ring push: the
+            # lamp fell past the firmware's 90 s staleness window and showed
+            # "no server" amber over bays whose state was perfectly well known.
+            # Measured on the board before this moved: 321 s without a push.
+            # The states are known every tick, so they are sent every tick and
+            # `SlotLedRing` throttles them down to a change or a 15 s refresh.
+            await context.led_ring.push(
+                source_type=context.config.source_type,
+                source_url=context.config.source_url,
+                code=context.config.code,
+                states=context.last_states,
+            )
+
             await _sleep_remaining(tick_started, context.config.poll_interval_s, stop)
     finally:
         await scheduler.drain()

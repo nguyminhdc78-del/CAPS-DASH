@@ -17,9 +17,14 @@ from ...db.session import get_session
 from ...repositories import camera_repository
 from ...security.current_user import CurrentUser
 from ...security.rbac import require_role
-from ...services import camera_control_service
+from ...services import camera_control_service, slot_led_service
 from ..deps import ServiceContext, get_service_context, get_settings_dep
-from ..schemas.camera_schemas import CameraSettingsResponse, UpdateCameraSettingsRequest
+from ..schemas.camera_schemas import (
+    CameraSettingsResponse,
+    RingTestRequest,
+    RingTestResponse,
+    UpdateCameraSettingsRequest,
+)
 
 router = APIRouter(prefix="/cameras", tags=["Cameras"])
 
@@ -66,4 +71,35 @@ async def update_settings(
 
     return CameraSettingsResponse(
         camera_id=camera_id, settings=reported.values, applied=applied
+    )
+
+
+@router.post(
+    "/{camera_id}/ring-test",
+    response_model=RingTestResponse,
+    summary="Light a pattern on the camera node's LED ring, for commissioning",
+)
+async def test_ring(
+    camera_id: int,
+    payload: RingTestRequest,
+    session: Session = Depends(get_session),
+    _: CurrentUser = AdminOnly,
+) -> RingTestResponse:
+    """Prove the ring is wired and shows the colour it is meant to.
+
+    Not audited, unlike a settings change: this writes nothing, the camera
+    loop takes the ring back within seconds, and the only lasting trace of a
+    click would be an audit table full of people checking a lamp.
+    """
+    camera = camera_repository.get_or_raise(session, camera_id)
+    await slot_led_service.push_test_pattern(
+        source_type=camera.source_type,
+        source_url=camera.source_url,
+        code=camera.code,
+        slots=payload.slots,
+    )
+    return RingTestResponse(
+        camera_id=camera_id,
+        slots=payload.slots,
+        reverts_within_s=slot_led_service.REFRESH_S,
     )

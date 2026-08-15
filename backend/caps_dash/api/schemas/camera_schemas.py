@@ -23,6 +23,8 @@ __all__ = [
     "ConnectionTestRequest",
     "ConnectionTestResponse",
     "CreateCameraRequest",
+    "RingTestRequest",
+    "RingTestResponse",
     "RuntimeTuningRequest",
     "SlotMapEntry",
     "SlotMapRequest",
@@ -208,6 +210,28 @@ class CameraSettingsResponse(BaseModel):
     settings: dict[str, Any]
     # Present only on a write: which changes the device accepted.
     applied: dict[str, bool] | None = None
+
+
+class RingTestRequest(BaseModel):
+    """One character per arc on the camera node's WS2812B ring.
+
+    `1` occupied (red), `0` free (green), `u` unresolved (breathing amber) -
+    the same alphabet the firmware's `/ring` takes, deliberately not a set of
+    named colours: what an installer is testing is that a *bay* lights the
+    colour it should, and colour names would hide which bay is which.
+    """
+
+    slots: str = Field(min_length=1, max_length=8, pattern=r"^[01u]+$")
+
+
+class RingTestResponse(BaseModel):
+    camera_id: int
+    slots: str
+    # Stated rather than implied: the camera loop resumes control of the ring
+    # within this long, so an installer who sees the colour revert has not hit
+    # a bug. There is deliberately no lock to hold a test pattern - one that
+    # outlived the test would be a lamp showing a car that is not there.
+    reverts_within_s: float
 
 
 class SlotMapEntry(BaseModel):

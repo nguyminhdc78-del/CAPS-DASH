@@ -18,6 +18,7 @@ from ..db.types import utc_now
 from ..errors.exceptions import NotFoundError
 from ..realtime.broadcast_hub import BroadcastHub
 from ..realtime.frame_header import build_frame_header
+from ..services.slot_led_service import SlotLedRing
 from ..vision.domain import Slot, SlotMap, SlotMapFilter, SlotState, build_filter
 from ..vision.frame_change_gate import FrameChangeGate, build_roi_mask
 from ..vision.sources.base import FrameSource
@@ -70,6 +71,11 @@ class CameraContext:
         default_factory=lambda: FrameChangeGate(threshold=3.0, force_interval_s=10.0)
     )
     metrics: CameraMetrics = field(default_factory=CameraMetrics)
+
+    # The status ring on the camera node, if it has one. Rebuilt with the
+    # context so a redrawn slot map re-pushes: the ring's arcs are positional,
+    # and a map with a bay added shifts every arc after it.
+    led_ring: SlotLedRing = field(default_factory=SlotLedRing)
 
     # The most recent frame, kept so the ROI editor's snapshot endpoint can be
     # served without a second request to the camera. One JPEG per camera - a

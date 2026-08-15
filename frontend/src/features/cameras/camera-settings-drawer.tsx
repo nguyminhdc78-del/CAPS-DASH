@@ -1,4 +1,4 @@
-import { Alert, App, Drawer, Empty, Space, Spin } from 'antd'
+import { Alert, App, Divider, Drawer, Empty, Space, Spin } from 'antd'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -7,6 +7,7 @@ import { hasAtLeastRole } from '@/core/auth/role-ranking'
 import { useAuth } from '@/core/auth/use-auth'
 import { useErrorMessage } from '@/core/i18n/use-error-message'
 import { CameraExposureLock } from './camera-exposure-lock'
+import { CameraRingTest } from './camera-ring-test'
 import { CameraSettingsSliders } from './camera-settings-sliders'
 import { CameraSettingsDiagnostics, CameraSettingsToggles } from './camera-settings-toggles'
 import { useCameraSettingsQuery, useUpdateCameraSettingsMutation } from './use-camera-settings-queries'
@@ -74,48 +75,66 @@ export function CameraSettingsDrawer({
       destroyOnHidden
       width={420}
     >
-      {camera === null ? null : settingsQuery.isLoading ? (
-        <Spin />
-      ) : isSourceInvalid ? (
-        <Empty description={t('camera:settingsSourceHasNoSensor')} />
-      ) : settingsQuery.isError ? (
-        <Alert type="error" showIcon message={toMessage(settingsQuery.error)} />
-      ) : settingsQuery.data ? (
+      {camera === null ? null : (
         <Space direction="vertical" style={{ width: '100%' }} size="large">
-          {!isAdmin && <Alert type="info" showIcon message={t('camera:settingsReadOnlyReason')} />}
+          {renderSensorPanel()}
 
-          {applied !== null &&
-            (rejected.length === 0 ? (
-              <Alert type="success" showIcon message={t('camera:settingsAppliedAllOk')} />
-            ) : (
-              <Alert
-                type="warning"
-                showIcon
-                message={t('camera:settingsAppliedPartial', { fields: rejected.join(', ') })}
-              />
-            ))}
-
-          <CameraSettingsDiagnostics settings={settingsQuery.data.settings} />
-
-          <CameraExposureLock
-            settings={settingsQuery.data.settings}
-            disabled={!isAdmin}
-            mutate={mutate}
-          />
-
-          <CameraSettingsSliders
-            settings={settingsQuery.data.settings}
-            disabled={!isAdmin}
-            mutate={mutate}
-          />
-
-          <CameraSettingsToggles
-            settings={settingsQuery.data.settings}
-            disabled={!isAdmin}
-            mutate={mutate}
-          />
+          {/* Outside the sensor panel deliberately. The ring is a separate
+              device on a separate endpoint, so a camera whose sensor cannot be
+              read - a source with no controllable sensor, or one that is not
+              answering at all - must not take the ring test down with it. That
+              is precisely when somebody needs it: an installer standing at a
+              half-working node, trying to work out which part is wrong. */}
+          <Divider style={{ margin: 0 }} />
+          <CameraRingTest cameraId={cameraId} disabled={!isAdmin} />
         </Space>
-      ) : null}
+      )}
     </Drawer>
   )
+
+  function renderSensorPanel(): ReactNode {
+    if (settingsQuery.isLoading) return <Spin />
+    if (isSourceInvalid) return <Empty description={t('camera:settingsSourceHasNoSensor')} />
+    if (settingsQuery.isError) {
+      return <Alert type="error" showIcon message={toMessage(settingsQuery.error)} />
+    }
+    if (!settingsQuery.data) return null
+
+    return (
+      <Space direction="vertical" style={{ width: '100%' }} size="large">
+        {!isAdmin && <Alert type="info" showIcon message={t('camera:settingsReadOnlyReason')} />}
+
+        {applied !== null &&
+          (rejected.length === 0 ? (
+            <Alert type="success" showIcon message={t('camera:settingsAppliedAllOk')} />
+          ) : (
+            <Alert
+              type="warning"
+              showIcon
+              message={t('camera:settingsAppliedPartial', { fields: rejected.join(', ') })}
+            />
+          ))}
+
+        <CameraSettingsDiagnostics settings={settingsQuery.data.settings} />
+
+        <CameraExposureLock
+          settings={settingsQuery.data.settings}
+          disabled={!isAdmin}
+          mutate={mutate}
+        />
+
+        <CameraSettingsSliders
+          settings={settingsQuery.data.settings}
+          disabled={!isAdmin}
+          mutate={mutate}
+        />
+
+        <CameraSettingsToggles
+          settings={settingsQuery.data.settings}
+          disabled={!isAdmin}
+          mutate={mutate}
+        />
+      </Space>
+    )
+  }
 }

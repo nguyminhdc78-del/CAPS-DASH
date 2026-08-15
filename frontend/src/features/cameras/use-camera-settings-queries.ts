@@ -85,6 +85,31 @@ export function useUpdateCameraSettingsMutation(cameraId: number | null) {
   })
 }
 
+/** Mirrors `RingTestResponse`. `reverts_within_s` is how long before the
+ * camera loop takes the ring back - stated by the server rather than assumed
+ * here, so the notice cannot drift from `REFRESH_S`. */
+export interface RingTestResult {
+  camera_id: number
+  slots: string
+  reverts_within_s: number
+}
+
+/**
+ * Lights one pattern on the camera node's LED ring.
+ *
+ * Deliberately not invalidating anything: nothing is stored, and the camera
+ * loop overwrites the ring within seconds. There is no server state for this
+ * to have gone stale.
+ */
+export function useRingTestMutation(cameraId: number | null) {
+  return useMutation({
+    mutationFn: async (slots: string) => {
+      if (cameraId === null) throw new Error('No camera selected')
+      return api.post<RingTestResult>(`/cameras/${cameraId}/ring-test`, { slots })
+    },
+  })
+}
+
 /** Shared by every settings control (sliders, switches, exposure lock) so
  * they all commit through the drawer's single mutation instance rather than
  * each opening its own - that instance is what carries `applied` after a
