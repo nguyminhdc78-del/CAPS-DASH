@@ -456,7 +456,7 @@ CPU execution provider. Ten runs of the shipped `yolo-vehicle.onnx`
 |---|---|
 | fastest | 502 |
 | median | 616 |
-| slowest | 1440 |
+| slowest | 1440 |                                 
 
 onnxruntime uses every core by default, so this figure already has all four.
 Available providers on this SoC are `AzureExecutionProvider` and
@@ -554,6 +554,104 @@ different defaults: the OV3660 is oversaturated and slightly dark out of
 reset, and the firmware applies `saturation=-2, brightness=1` for it, as
 Espressif's own reference example does. Assuming the wrong one is what
 produced a strongly green-cast picture on this installation.
+
+#### Flashing the ESP32-CAM
+
+```
+cd firmware/esp32cam
+cp wifi-credentials.example.h wifi-credentials.h   # then fill in the password
+pio run -t upload                                   # needs the module on USB
+```
+
+`wifi-credentials.h` is gitignored; the example beside it is the contract. The
+password used to be a literal in the sketch with a comment asking whoever
+flashed the board to blank it again before committing - that is a process, and
+a process that must be remembered every time eventually is not. Without the
+file the build still compiles but cannot associate, which is deliberate: it
+fails loudly at the network rather than looking like a hardware fault.
+
+**`STATIC_IP` in the sketch and the camera row's `source_url` are one setting
+in two places.** The installed module holds `192.168.137.50` and the `02`
+camera row points at `http://192.168.137.50/anh`. Flashing a different address
+takes the camera offline at the next reboot, and the symptom - a camera that
+was fine until someone touched the firmware - points nowhere near the cause.
+Change both together or neither.
+
+Uploading needs the module physically on USB (the CH340 on the ESP32-CAM-MB
+shield, `upload_port` in `platformio.ini`). There is no OTA path: the firmware
+carries no `ArduinoOTA` handler, so a module reachable only over WiFi cannot be
+reflashed until it is plugged in.
+
+#### Bay-status LED ring (WS2812B)
+
+An ESP32-CAM node can carry a WS2812B ring that shows the bays it watches.
+Three displays, in priority order:
+
+| what the ring does | what it means |
+|---|---|
+| whole ring breathes amber, slow and deep (2.0 s) | no push for 90 s - the server is not talking |
+| whole ring pulses red, fast and shallow (1.4 s) | **every bay occupied - no free space** |
+| one arc per bay: red / green / breathing amber | occupied / free / not yet resolved |
+
+The full-bay pulse is a *distance* signal. Arcs answer "which bay is free" for
+somebody standing under the camera; from the far end of an aisle the whole ring
+is one red smudge and the gaps between arcs are invisible, so a full row stops
+being segments and becomes a single moving object instead. Motion is the
+strongest attention cue available, and the pulse floor sits at 150/255 so even
+its darkest phase stays readable in sun - a pulse that dipped to near-black
+would halve the average output and undo the reason the colours were chosen.
+
+The camera does not decide any of that. Detection runs on the server, so the
+server pushes the answer to `GET /ring?slots=10u` - one character per bay, in
+sorted bay-code order, `1` occupied / `0` free / `u` unknown. Nothing to
+configure: the camera loop pushes on every state change and refreshes every
+15 s, and a device that answers `404` is asked once and then left alone.
+
+**Wiring.** Ring `5V` to the module's `5V` pin, `GND` to `GND`, `D` (DIN) to
+**GPIO 14**; `DO` unconnected. GPIO 14 is an SD-card pin (`HS2_CLK`), free
+because this firmware never mounts the card - do not add SD logging without
+moving the ring first.
+
+**Power it properly.** One lit LED on a single channel draws ~20 mA, so a
+16-LED ring is ~320 mA on top of the camera's own ~250 mA peak. A 500 mA phone
+charger browns the ESP32 out mid-transmit, which looks exactly like a flaky
+camera. Never take the ring off the `3V3` pin.
+
+**Colours are chosen for daylight, not taste.** Saturation is what survives
+sunlight; washing a hue toward white - the instinctive way to make an LED
+brighter - destroys it. The eye is also not equally sensitive to the two dies:
+the green die (~525 nm) reads roughly twice the luminance of the red (~625 nm)
+at the same drive. So red runs flat out at 255 and green is held back to 200,
+which keeps the two comparable instead of making the red look broken. **If the
+ring is still not readable in direct sun, the fix is a hood or a larger ring -
+red is already at maximum.** Constants live at the top of
+`firmware/esp32cam/slot-ring-led.cpp` (`RING_LED_COUNT` defaults to 16 - change
+it to match the ring fitted; `RING_BRIGHTNESS` down to ~64 for an indoor bay).
+
+**Commissioning.** On boot the ring sweeps red, green, amber. If the first step
+comes up green the strip is RGB rather than GRB (change `NEO_GRB` in the same
+file); if nothing lights, the ring is on `3V3` rather than `5V`. `GET /status`
+reports `ring` (what is displayed) and `ring_age_s` (how old that answer is),
+which is what separates "these bays are unresolved" from "the server stopped
+talking" - the ring shows amber for both.
+
+The dashboard has the same check without a terminal: **Cameras → the camera's
+settings panel → "Bay-status LED ring"**, three buttons that light the whole
+ring red, green or amber. Admin only (`POST /api/cameras/{id}/ring-test`), and
+it is not audited - it writes nothing and the camera loop takes the ring back
+within 15 s. That revert is deliberate and there is no lock to hold a pattern:
+a test that outlived the test would be a lamp showing a car that is not there.
+
+**A 3.3 V data line into a 5 V-powered WS2812B is marginal** by datasheet
+(V_IH = 0.7 x VDD). It works on most parts; if the first LED misbehaves, drop
+the ring's supply through a signal diode to ~4.3 V or fit a level shifter.
+
+Test it without the server:
+
+```
+curl "http://<camera>/ring?slots=1"     # whole ring red
+curl "http://<camera>/ring?slots=010"   # three bays: free, occupied, free
+```
 
 ### MaixCam HTTP snapshot - the primary path
 

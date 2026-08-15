@@ -314,6 +314,7 @@ See [`docs/deployment-guide.md`](docs/deployment-guide.md) for the full referenc
 |----------|----------|---------|
 | [`docs/project-overview-pdr.md`](docs/project-overview-pdr.md) | Stakeholders | Problem statement, users, scope, privacy, success criteria, non-goals |
 | [`docs/system-architecture.md`](docs/system-architecture.md) | Developers | Physical flow, process model, concurrency, framing spec, data model, hot reload |
+| [`docs/algorithms-and-techniques.md`](docs/algorithms-and-techniques.md) | Developers | Every algorithm and technique in the codebase: vision pipeline, voting, scheduling, protocol, security (Vietnamese) |
 | [`docs/code-standards.md`](docs/code-standards.md) | Developers | Naming, file size, sync/async rules, error contracts, testing strategy |
 | [`docs/design-guidelines.md`](docs/design-guidelines.md) | Frontend devs | Ant Design tokens, colors, bilingual copy, accessibility, responsive layout |
 | [`docs/deployment-guide.md`](docs/deployment-guide.md) | Operators | Install, configure, backup, restore, upgrade, soak test, troubleshooting |

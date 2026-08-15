@@ -1618,6 +1618,46 @@
         "title": "ResetPasswordRequest",
         "type": "object"
       },
+      "RingTestRequest": {
+        "description": "One character per arc on the camera node's WS2812B ring.\n\n`1` occupied (red), `0` free (green), `u` unresolved (breathing amber) -\nthe same alphabet the firmware's `/ring` takes, deliberately not a set of\nnamed colours: what an installer is testing is that a *bay* lights the\ncolour it should, and colour names would hide which bay is which.",
+        "properties": {
+          "slots": {
+            "maxLength": 8,
+            "minLength": 1,
+            "pattern": "^[01u]+$",
+            "title": "Slots",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slots"
+        ],
+        "title": "RingTestRequest",
+        "type": "object"
+      },
+      "RingTestResponse": {
+        "properties": {
+          "camera_id": {
+            "title": "Camera Id",
+            "type": "integer"
+          },
+          "reverts_within_s": {
+            "title": "Reverts Within S",
+            "type": "number"
+          },
+          "slots": {
+            "title": "Slots",
+            "type": "string"
+          }
+        },
+        "required": [
+          "camera_id",
+          "slots",
+          "reverts_within_s"
+        ],
+        "title": "RingTestResponse",
+        "type": "object"
+      },
       "RuntimeTuningRequest": {
         "description": "Live adjustment that must NOT restart the worker.\n\nThe right confidence depends on the lighting in front of that particular\ncamera, and finding out it is wrong during a demo is too late to fix by\nediting a file and restarting.",
         "properties": {
@@ -4627,6 +4667,134 @@
           }
         ],
         "summary": "Update a camera",
+        "tags": [
+          "Cameras"
+        ]
+      }
+    },
+    "/api/cameras/{camera_id}/ring-test": {
+      "post": {
+        "description": "Prove the ring is wired and shows the colour it is meant to.\n\nNot audited, unlike a settings change: this writes nothing, the camera\nloop takes the ring back within seconds, and the only lasting trace of a\nclick would be an audit table full of people checking a lamp.",
+        "operationId": "test_ring_api_cameras__camera_id__ring_test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "camera_id",
+            "required": true,
+            "schema": {
+              "title": "Camera Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RingTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RingTestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication required or failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Insufficient role"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with existing data"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limited"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unexpected server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Light a pattern on the camera node's LED ring, for commissioning",
         "tags": [
           "Cameras"
         ]
