@@ -19,16 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Third-party components carry their own terms. Two are worth naming because
-they shaped the design:
-
-  Adafruit NeoPixel (LGPL-3.0) - firmware only, on the ESP32-CAM. It never
-  enters the server image.
-
-  Ultralytics (AGPL-3.0) - the `vision-dev` extra ONLY. It exists to export a
-  .onnx on a developer machine and is deliberately absent from the deployed
-  dependency set; CI asserts this on every run. The committed model file is
-  the export, not the exporter.

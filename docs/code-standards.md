@@ -266,10 +266,18 @@ chore(deps): pin onnxruntime to 1.28 LTS
 
 ## Licencing
 
+This project ships under the MIT licence (`LICENSE`, root).
+
 ### Runtime Dependencies
 - **Apache-2.0**: onnxruntime (vehicle detection at runtime).
 - **MIT**: FastAPI, Pydantic, SQLAlchemy, React, Ant Design.
 - **Other**: Locked in pyproject.toml; audit in CI.
+
+### Firmware-Only Dependencies
+- **LGPL-3.0**: Adafruit NeoPixel, driving the bay-status ring on the
+  ESP32-CAM (`firmware/esp32cam/`). It is linked into the firmware image
+  flashed to the microcontroller and never enters the server image, so the
+  two licence boundaries do not meet.
 
 ### Development-Only Dependencies
 - **AGPL-3.0**: ultralytics (used only to export ONNX model; never deployed).
