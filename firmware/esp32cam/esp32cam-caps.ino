@@ -1,11 +1,12 @@
 /*
  * CAPS-DASH ESP32-CAM node.
  *
- * Three endpoints:
+ * Five endpoints:
  *   GET /anh                    one JPEG still  (compatible with the old firmware)
  *   GET /stream                 continuous MJPEG
  *   GET /control?var=X&val=N    sensor settings
  *   GET /status                 current settings + link quality, as JSON
+ *   GET /ring?slots=10u         WS2812B bay-status ring (see slot-ring-led.h)
  *
  * WHY A STREAM AS WELL AS A STILL, measured on the real hardware:
  * one still costs ~74 ms end to end - 8 ms TCP handshake, 37 ms sensor
@@ -32,10 +33,31 @@
 #include <WebServer.h>
 #include <esp_camera.h>
 
+#include "slot-ring-led.h"
+
+// The WiFi password lives in `wifi-credentials.h`, which is NOT tracked - see
+// `wifi-credentials.example.h` for the two lines it holds. This used to be a
+// literal below with a comment asking whoever flashed the board to put
+// `CHANGE_ME` back before committing; that is a process, and a process that
+// has to be remembered every time eventually is not, and the cost of
+// forgetting once is a live credential in git history forever.
+#if __has_include("wifi-credentials.h")
+#include "wifi-credentials.h"
+#endif
+
 // ---------------------------------------------------------------- settings
 
-static const char *WIFI_SSID = "CHANGE_ME";
-static const char *WIFI_PASSWORD = "CHANGE_ME";
+#ifndef CAPS_WIFI_SSID
+#define CAPS_WIFI_SSID "Meomeo"
+#endif
+#ifndef CAPS_WIFI_PASSWORD
+// Deliberately a value that cannot associate: a build with no credentials
+// file must fail to join the network loudly, not quietly join an open one.
+#define CAPS_WIFI_PASSWORD "CHANGE_ME"
+#endif
+
+static const char *WIFI_SSID = CAPS_WIFI_SSID;
+static const char *WIFI_PASSWORD = CAPS_WIFI_PASSWORD;
 
 // A fixed address, because the camera's URL is stored in the CAPS-DASH
 // database. A DHCP lease that moves after a power cut would leave every
@@ -43,14 +65,35 @@ static const char *WIFI_PASSWORD = "CHANGE_ME";
 // rather than a changed address. Set USE_STATIC_IP to false to let DHCP
 // assign one anyway.
 static const bool USE_STATIC_IP = true;
-static const IPAddress STATIC_IP(192, 168, 137, 50);
+
+// The last octet and the camera code are the ONLY things that differ between
+// the two nodes, and they come from the PlatformIO environment rather than
+// from edits here - see `platformio.ini`. Two identical boards whose configs
+// live in one file, swapped by hand between flashes, is how a module ends up
+// answering on its neighbour's address and taking two cameras offline at once.
+//
+//   pio run -e cam02 -t upload      # -> 192.168.137.50, code "02"
+//   pio run -e cam03 -t upload      # -> 192.168.137.51, code "03"
+//
+// These two and the camera row's `source_url` are one setting in two places:
+// flashing a different address takes that camera offline at its next reboot,
+// and the symptom points nowhere near the cause. Change both or neither.
+#ifndef CAPS_STATIC_IP_LAST
+#define CAPS_STATIC_IP_LAST 50
+#endif
+#ifndef CAPS_CAMERA_CODE
+#define CAPS_CAMERA_CODE "02"
+#endif
+
+static const IPAddress STATIC_IP(192, 168, 137, CAPS_STATIC_IP_LAST);
 static const IPAddress GATEWAY(192, 168, 137, 1);
 static const IPAddress SUBNET(255, 255, 255, 0);
 static const IPAddress DNS_SERVER(192, 168, 137, 1);
 
-// Shown in /status. Give each module a distinct one - it is the only way to
-// tell two identical boards apart on the network.
-static const char *CAMERA_CODE = "cam-01";
+// Shown in /status. Distinct per module - it is the only way to tell two
+// identical boards apart on the network, and the check that catches a board
+// flashed with the wrong environment before it is mounted on a ceiling.
+static const char *CAMERA_CODE = CAPS_CAMERA_CODE;  // matches its `cameras.code` row
 
 // VGA is what the slot polygons were drawn against. Lower it (QVGA) for a
 // markedly faster stream; the ROI editor rescales polygons for a changed
@@ -197,8 +240,11 @@ static void handleStream() {
     client.print("\r\n");
     esp_camera_fb_return(frame);
 
-    // Yield so /control and /status still answer while a stream is running.
+    // Yield so /control, /status and /ring still answer while a stream is
+    // running - and repaint here too, because this loop owns the CPU for as
+    // long as the stream lasts and loop() below never gets a turn.
     server.handleClient();
+    ringLoop();
   }
 }
 
@@ -241,11 +287,35 @@ static void handleControl() {
                   (result == 0 ? "true" : "false") + "}");
 }
 
+/**
+ * One state character per bay, in the order the server sorts bay codes.
+ *
+ * The camera is told the answer rather than working it out: detection runs on
+ * the backend, and a node that guessed locally would light a colour that
+ * disagreed with the dashboard beside it. Unauthenticated, like every other
+ * endpoint here - this whole device sits on a trusted LAN, and the worst a
+ * stranger can do with it is light the wrong colour.
+ */
+static void handleRing() {
+  const String slots = server.arg("slots");
+  if (!ringApply(slots)) {
+    server.send(400, "text/plain", "slots must be 1..8 characters of 0/1/u");
+    return;
+  }
+  server.send(200, "application/json",
+              String("{\"slots\":\"") + ringState() + "\",\"ok\":true}");
+}
+
 static void handleStatus() {
   sensor_t *s = esp_camera_sensor_get();
   String body = String("{\"code\":\"") + CAMERA_CODE + "\",\"rssi\":" + WiFi.RSSI() +
                 ",\"heap\":" + ESP.getFreeHeap() + ",\"psram\":" + (psramFound() ? "true" : "false") +
-                ",\"uptime_s\":" + (millis() / 1000);
+                ",\"uptime_s\":" + (millis() / 1000) +
+                // What the ring is showing and how old that answer is. An
+                // operator looking at an amber ring needs to know whether the
+                // bays are unresolved or the server stopped talking, and those
+                // two are indistinguishable from the outside.
+                ",\"ring\":\"" + ringState() + "\",\"ring_age_s\":" + ringAgeSeconds();
   if (s != nullptr) {
     // The sensor id is reported so nobody has to guess which one is fitted -
     // guessing it wrong is what sent a whole debugging session chasing the
@@ -294,6 +364,10 @@ void setup() {
   pinMode(FLASH_GPIO_NUM, OUTPUT);
   digitalWrite(FLASH_GPIO_NUM, LOW);
 
+  // Before the camera, deliberately: the ring's self-test is the only signal
+  // this board gives when the camera fails to init and it restarts in a loop.
+  ringBegin();
+
   if (!startCamera()) {
     // Nothing this node does is useful without a camera, and a power cycle
     // fixes most init faults - better than answering 503 forever.
@@ -307,12 +381,14 @@ void setup() {
   server.on("/stream", HTTP_GET, handleStream);
   server.on("/control", HTTP_GET, handleControl);
   server.on("/status", HTTP_GET, handleStatus);
+  server.on("/ring", HTTP_GET, handleRing);
   server.onNotFound([]() { server.send(404, "text/plain", "not found"); });
   server.begin();
 }
 
 void loop() {
   server.handleClient();
+  ringLoop();
 
   // WiFi drops happen in a basement. Reconnect rather than requiring somebody
   // to walk down and power-cycle the module.

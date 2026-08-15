@@ -119,3 +119,13 @@ frontend/dist/
 # in plaintext. Never commit one - a private repo is still cloned and shared,
 # and git history is forever.
 firmware/backup/
+
+# PlatformIO build output (firmware/esp32cam)
+.pio/
+
+# The hotspot password the ESP32-CAM joins with. The example header beside it
+# IS committed - that one is the contract, this one is the secret. Kept out of
+# the sketch itself because "fill it in, then remember to blank it before
+# committing" is a process, and the cost of forgetting once is a live
+# credential in git history forever.
+firmware/esp32cam/wifi-credentials.h
