@@ -129,3 +129,26 @@ firmware/backup/
 # committing" is a process, and the cost of forgetting once is a live
 # credential in git history forever.
 firmware/esp32cam/wifi-credentials.h
+
+# --- Not part of the product ------------------------------------------------
+# Local AI coding-assistant configuration: skills, agents, hooks and prompts.
+# It is developer tooling for whoever happens to be using it, not something a
+# clone needs to build or run CAPS-DASH, and at ~2000 files it buried the 573
+# that ARE the system. Kept on disk, out of the repo.
+.claude/
+.opencode/
+.gemini/
+CLAUDE.md
+AGENTS.md
+
+# Working documents (proposals, slide decks) and the lock/recovery files Word
+# scatters beside them. Binary, unreviewable in a diff, and superseded the
+# moment they are edited - they travel by email, not by git.
+*.docx
+*.pptx
+~$*
+~WRL*.tmp
+
+# Loose image scratch - screenshots and sample stills kept while working on the
+# vision pipeline. Nothing in the codebase references them.
+image/
