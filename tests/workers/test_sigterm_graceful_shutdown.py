@@ -169,6 +169,21 @@ def test_sigterm_produces_a_clean_shutdown_with_a_running_camera_task(tmp_path: 
     if sys.platform == "win32":
         assert proc.returncode in (0, 3), f"unexpected exit code {proc.returncode}:\n{output}"
     else:
-        assert proc.returncode == 0, f"expected a clean exit, got {proc.returncode}:\n{output}"
+        # `-SIGTERM` is the CORRECT outcome here, not a failure. Once the
+        # graceful shutdown finishes, `Server.capture_signals` restores the
+        # original handlers and re-raises the signal it caught
+        # (uvicorn/server.py, `for captured_signal in reversed(...)`:
+        # `signal.raise_signal(captured_signal)`), so the process ends up
+        # terminated by SIGTERM under its default disposition - the POSIX
+        # convention for "died from this signal", which is what systemd and
+        # `docker stop` both expect from a service they asked to stop.
+        #
+        # This assertion read `== 0` until the workflows were first switched
+        # on: it had only ever run on Windows, which takes the branch above,
+        # so nothing had ever exercised it on the platform that ships.
+        # 0 is still accepted for a uvicorn that does not re-raise.
+        assert proc.returncode in (0, -signal.SIGTERM), (
+            f"expected a clean exit or -SIGTERM, got {proc.returncode}:\n{output}"
+        )
     assert "shutdown_complete" in output, f"missing the shutdown log line:\n{output}"
     assert "Task was destroyed but it is pending" not in output, output
