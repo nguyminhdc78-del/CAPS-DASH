@@ -6,7 +6,9 @@ name: Docker image
 
 on:
   push:
-    branches: [main]
+    # See ci.yml: this repository's default branch is `master`, and the
+    # scaffold's `main` meant this workflow never ran.
+    branches: [master]
     tags: ["v*"]
 
 concurrency:

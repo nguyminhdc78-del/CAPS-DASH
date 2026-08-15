@@ -101,6 +101,20 @@ exclude = ["backend/caps_dash/db/migrations/versions/"]
 module = ["cv2.*", "onnxruntime.*", "ultralytics.*", "fast_alpr.*"]
 ignore_missing_imports = true
 
+# The two modules that import `ultralytics` behind the `vision-dev` extra.
+# Whether their `# type: ignore` is needed depends on whether that optional
+# extra happens to be installed: with ultralytics present the import is real
+# and the ignore is used; without it the override above turns the import into
+# `Any` and `strict`'s warn_unused_ignores calls the same comment redundant.
+# So the identical source failed `mypy backend` in CI - which installs only
+# `[dev]`, deliberately - while passing on a developer machine that had
+# exported the model. Neither the comment nor its removal can be right in both
+# environments, so the check that has no stable answer is switched off for
+# exactly these two modules rather than papering over it at either end.
+[[tool.mypy.overrides]]
+module = ["caps_dash.vision.export_onnx", "caps_dash.vision.detectors.ultralytics_detector"]
+warn_unused_ignores = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # "." puts the repo root on sys.path so `tests` is an importable package and

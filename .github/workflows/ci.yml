@@ -8,7 +8,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # `master`, because that is this repository's default branch. It said
+    # `main` from the scaffold and therefore never fired once: a workflow
+    # naming a branch that does not exist is not an error GitHub reports,
+    # it is simply a gate that silently never runs.
+    branches: [master]
   pull_request:
 
 # A stale run for the same PR/branch is wasted CI minutes once a new push
